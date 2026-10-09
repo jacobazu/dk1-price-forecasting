@@ -6,6 +6,9 @@ on:
   schedule:
     - cron: "0 8 * * *"   # 08:00 UTC = 09:00/10:00 Danish time
   workflow_dispatch:       # "Run workflow" button
+  push:
+    paths:
+      - "index.qmd"
 
 permissions:
   contents: write          # to commit the new forecast
@@ -34,9 +37,11 @@ jobs:
           Rscript scripts/02_clean.R
 
       - name: Forecast tomorrow
+        if: github.event_name != 'push'
         run: Rscript scripts/05_forecast_tomorrow.R
 
       - name: Save forecast to the repository
+        if: github.event_name != 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
