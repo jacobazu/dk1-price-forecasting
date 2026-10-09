@@ -103,7 +103,7 @@ if (nrow(scored) > 0) {
 
 ## Method
 
-**LEAR** (LASSO-estimated autoregressive model, Lago et al. 2021): one LASSO regression per hour,
+**LEAR** (LASSO estimated auto regressive model. Inspired by Lago(2021) ): one LASSO regression per hour, in total 24 regressions
 using all 24 prices from day D-1, D-2, D-3 and D-7 plus weekday dummies. Each forecast is
 estimated on the previous two years, with lambda chosen by BIC. Prices are transformed with
 asinh((p − median) / MAD) to handle spikes and negative prices.
