@@ -1,0 +1,113 @@
+---
+title: "DK1 day ahead electricity price forecast"
+subtitle: "Denmark (west) · before noon auction, daily update"
+format:
+  html:
+    embed-resources: true
+    theme: cosmo
+    page-layout: article
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+library(dplyr)
+library(readr)
+library(lubridate)
+library(ggplot2)
+library(plotly)
+
+# actual prices in DK time
+actual <- readRDS("data/processed/prices_dk1_hourly.rds") |>
+  mutate(local = with_tz(time, "Europe/Copenhagen"),
+         date  = as_date(local),
+         hour  = hour(local)) |>
+  group_by(date, hour) |>
+  summarise(actual = mean(price), .groups = "drop")
+
+# live forecasts
+fc <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE) |>
+  mutate(date = as_date(date))
+
+latest <- max(fc$date)
+```
+
+## Forecast for `r format(latest, "%A %d %B %Y")`
+
+```{r}
+plot_df <- bind_rows(
+  actual |> filter(date == latest - 1) |>
+    transmute(hour, price = actual, series = paste("Actual,", format(latest - 1, "%d %b"))),
+  fc |> filter(date == latest) |>
+    transmute(hour, price = lear, series = paste("LEAR forecast,", format(latest, "%d %b")))
+)
+
+p <- ggplot(plot_df, aes(hour, price, colour = series, linetype = series)) +
+  geom_line(linewidth = 0.8) +
+  scale_colour_manual(values = c("grey50", "#1f5fbf")) +
+  scale_linetype_manual(values = c("dashed", "solid")) +
+  scale_x_continuous(breaks = seq(0, 23, 3)) +
+  labs(x = "Hour (Danish time)", y = "EUR/MWh", colour = NULL, linetype = NULL) +
+  theme_minimal()
+
+ggplotly(p) |> layout(legend = list(orientation = "h", y = -0.2))
+```
+
+## Live track record
+
+Every forecast is saved before the auction and never changed afterwards.
+
+```{r}
+scored <- fc |>
+  inner_join(actual, by = c("date", "hour")) |>
+  filter(date >= max(date) - 29)
+
+if (nrow(scored) == 0) {
+  cat("The track record starts once the first forecast day has passed.")
+} else {
+  p2 <- scored |>
+    mutate(time = as_datetime(date, tz = "Europe/Copenhagen") + hours(hour)) |>
+    ggplot(aes(time)) +
+    geom_line(aes(y = actual, colour = "Actual"), linewidth = 0.5) +
+    geom_line(aes(y = lear,   colour = "LEAR forecast"), linewidth = 0.5) +
+    scale_colour_manual(values = c("Actual" = "black", "LEAR forecast" = "#1f5fbf")) +
+    labs(x = NULL, y = "EUR/MWh", colour = NULL) +
+    theme_minimal()
+
+  ggplotly(p2) |> layout(legend = list(orientation = "h", y = -0.2))
+}
+```
+
+```{r}
+if (nrow(scored) > 0) {
+  tibble(
+    Model = c("LEAR", "Naive (same hour yesterday)"),
+    `MAE (EUR/MWh)`  = c(mean(abs(scored$actual - scored$lear)),
+                         mean(abs(scored$actual - scored$naive_day))),
+    `RMSE (EUR/MWh)` = c(sqrt(mean((scored$actual - scored$lear)^2)),
+                         sqrt(mean((scored$actual - scored$naive_day)^2)))
+  ) |>
+    knitr::kable(digits = 1, caption = paste("Last", n_distinct(scored$date), "forecast days"))
+}
+```
+
+## Backtest (Oct 2025 – Oct 2026)
+
+| Model | MAE | RMSE |
+|---|---|---|
+| **LEAR** | **22.7** | **35.8** |
+| Naive: same hour yesterday | 30.8 | 46.8 |
+| Naive: weekly mix | 34.2 | 51.4 |
+
+## Method
+
+**LEAR** (LASSO-estimated autoregressive model, Lago et al. 2021): one LASSO regression per hour,
+using all 24 prices from day D-1, D-2, D-3 and D-7 plus weekday dummies. Each forecast is
+estimated on the previous two years, with lambda chosen by BIC. Prices are transformed with
+asinh((p − median) / MAD) to handle spikes and negative prices.
+
+Data: [Energi Data Service](https://www.energidataservice.dk) (Energinet).
+Code: [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting).
+Last updated: `r format(with_tz(Sys.time(), "Europe/Copenhagen"), "%d %B %Y, %H:%M")` (Danish time).
