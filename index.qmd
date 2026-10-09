@@ -1,11 +1,23 @@
 ---
-title: "DK1 day ahead electricity price forecast"
-subtitle: "Denmark (west) · before noon auction, daily update"
+title: "DK1 Day-Ahead Electricity Price Forecast"
 format:
-  html:
+  dashboard:
+    theme: flatly
     embed-resources: true
-    theme: cosmo
-    page-layout: article
+    nav-buttons:
+      - icon: github
+        href: https://github.com/jacobazu/dk1-price-forecasting
+    include-in-header:
+      text: |
+        <style>
+          /* key-number tiles: white card, coloured strip on the left */
+          .kpi { height: 100%; display: flex; flex-direction: column; justify-content: center;
+                 padding: 0.2rem 0.9rem; border-left: 4px solid var(--accent, #1f5fbf); }
+          .kpi-label { font-size: 0.8rem; color: #6c757d; text-transform: uppercase;
+                       letter-spacing: 0.05em; }
+          .kpi-value { font-size: 2.1rem; font-weight: 600; color: #2c3e50; line-height: 1.15; }
+          .kpi-sub   { font-size: 0.9rem; color: #6c757d; }
+        </style>
 execute:
   echo: false
   warning: false
@@ -13,11 +25,16 @@ execute:
 ---
 
 ```{r}
+#| include: false
 library(dplyr)
 library(readr)
 library(lubridate)
-library(ggplot2)
 library(plotly)
+
+Sys.setlocale("LC_TIME", "C")   # English day and month names, also on a Danish computer
+
+blue <- "#1f5fbf"
+grey <- "#9aa5b1"
 
 # actual prices in DK time
 actual <- readRDS("data/processed/prices_dk1_hourly.rds") |>
@@ -31,83 +48,231 @@ actual <- readRDS("data/processed/prices_dk1_hourly.rds") |>
 fc <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE) |>
   mutate(date = as_date(date))
 
-latest <- max(fc$date)
-```
+latest    <- max(fc$date)
+tomorrow  <- fc |> filter(date == latest)
+today_act <- actual |> filter(date == latest - 1)
 
-## Forecast for `r format(latest, "%A %d %B %Y")`
-
-```{r}
-plot_df <- bind_rows(
-  actual |> filter(date == latest - 1) |>
-    transmute(hour, price = actual, series = paste("Actual,", format(latest - 1, "%d %b"))),
-  fc |> filter(date == latest) |>
-    transmute(hour, price = lear, series = paste("LEAR forecast,", format(latest, "%d %b")))
-)
-
-p <- ggplot(plot_df, aes(hour, price, colour = series, linetype = series)) +
-  geom_line(linewidth = 0.8) +
-  scale_colour_manual(values = c("grey50", "#1f5fbf")) +
-  scale_linetype_manual(values = c("dashed", "solid")) +
-  scale_x_continuous(breaks = seq(0, 23, 3)) +
-  labs(x = "Hour (Danish time)", y = "EUR/MWh", colour = NULL, linetype = NULL) +
-  theme_minimal()
-
-ggplotly(p) |> layout(legend = list(orientation = "h", y = -0.2))
-```
-
-## Live track record
-
-Every forecast is saved before the auction and never changed afterwards.
-
-```{r}
+# scored live forecasts (last 30 days)
 scored <- fc |>
   inner_join(actual, by = c("date", "hour")) |>
   filter(date >= max(date) - 29)
 
+eur  <- function(x) format(round(x, 1), nsmall = 1)
+hour_label <- function(h) sprintf("%02d:00", h)
+
+# numbers for the tiles
+cheap <- tomorrow |> slice_min(lear, n = 1, with_ties = FALSE)
+peak  <- tomorrow |> slice_max(lear, n = 1, with_ties = FALSE)
+has_scores <- nrow(scored) > 0
+mae <- function(col) if (has_scores) eur(mean(abs(scored$actual - scored[[col]]))) else "–"
+
+# Models: a button appears automatically for every model column in forecasts_live.csv.
+# To add a model later, add its column name, label and colour here.
+model_labels <- c(lear      = "LEAR",
+                  lear_x    = "LEAR + exogenous",
+                  xgb       = "XGBoost",
+                  ensemble  = "Ensemble",
+                  naive_day = "Naive")
+model_colors <- c(lear      = "#1f5fbf",
+                  lear_x    = "#e07b00",
+                  xgb       = "#2a9d55",
+                  ensemble  = "#7b3fbf",
+                  naive_day = "#9aa5b1")
+models <- intersect(names(model_labels), names(fc))
+
+# Buttons above a chart: one per model, plus "All".
+# The chart's first trace (actual prices) is always shown.
+model_menu <- function(models) {
+  n <- length(models)
+  buttons <- lapply(models, \(m) list(
+    method = "restyle",
+    label  = model_labels[[m]],
+    args   = list("visible", as.list(c(TRUE, models == m)))
+  ))
+  buttons <- c(buttons, list(list(method = "restyle", label = "All",
+                                  args = list("visible", as.list(rep(TRUE, n + 1))))))
+  list(list(type = "buttons", direction = "right", active = 0, showactive = TRUE,
+            x = 0, xanchor = "left", y = 1.02, yanchor = "bottom",
+            bgcolor = "#f4f6f9", bordercolor = "#d5dae1", font = list(size = 13),
+            buttons = buttons))
+}
+
+chart_layout <- function(p, models, xtitle = "") {
+  p |>
+    layout(xaxis = list(title = xtitle, showgrid = FALSE),
+           yaxis = list(title = "", gridcolor = "#eceff3", zerolinecolor = "#c8ced6"),
+           legend = list(orientation = "h", x = 0, y = -0.15),
+           hovermode = "x unified",
+           margin = list(t = 50),
+           updatemenus = model_menu(models)) |>
+    config(displayModeBar = FALSE)
+}
+```
+
+# Forecast
+
+## Row {height=18%}
+
+::: {.card}
+<div class="kpi" style="--accent: #1f5fbf">
+<div class="kpi-label">Average price tomorrow</div>
+<div class="kpi-value">`r eur(mean(tomorrow$lear))`</div>
+<div class="kpi-sub">€/MWh · today `r eur(mean(today_act$actual))`</div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #2a9d55">
+<div class="kpi-label">Cheapest hour</div>
+<div class="kpi-value">`r hour_label(cheap$hour)`</div>
+<div class="kpi-sub">`r eur(cheap$lear)` €/MWh</div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #d64550">
+<div class="kpi-label">Most expensive hour</div>
+<div class="kpi-value">`r hour_label(peak$hour)`</div>
+<div class="kpi-sub">`r eur(peak$lear)` €/MWh</div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #9aa5b1">
+<div class="kpi-label">Backtest accuracy</div>
+<div class="kpi-value">−26%</div>
+<div class="kpi-sub">error vs naive benchmark (MAE)</div>
+</div>
+:::
+
+## Row
+
+```{r}
+#| title: "Tomorrow's forecast vs today's prices (EUR/MWh)"
+p <- plot_ly() |>
+  add_lines(data = today_act, x = ~hour, y = ~actual,
+            name = paste("Actual,", format(latest - 1, "%a %d %b")),
+            line = list(color = grey, width = 2, dash = "dot"),
+            hovertemplate = "%{y:.1f} €/MWh<extra>Actual</extra>")
+
+# Naive is left out here: its forecast for tomorrow is simply today's prices (the dotted line)
+fc_models <- setdiff(models, "naive_day")
+
+for (m in fc_models) {
+  p <- p |>
+    add_lines(data = tomorrow, x = ~hour, y = tomorrow[[m]],
+              name = paste0(model_labels[[m]], ", ", format(latest, "%a %d %b")),
+              visible = (m == fc_models[1]),
+              line = list(color = model_colors[[m]], width = 3),
+              hovertemplate = paste0("%{y:.1f} €/MWh<extra>", model_labels[[m]], "</extra>"))
+}
+
+p |> chart_layout(fc_models, xtitle = "Hour (Danish time)") |> layout(xaxis = list(dtick = 3))
+```
+
+# Track record
+
+## Row {height=18%}
+
+::: {.card}
+<div class="kpi" style="--accent: #1f5fbf">
+<div class="kpi-label">Days tracked</div>
+<div class="kpi-value">`r n_distinct(scored$date)`</div>
+<div class="kpi-sub">`r if (has_scores) paste("since", format(min(scored$date), "%d %b %Y")) else "starts after the first forecast day"`</div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #2a9d55">
+<div class="kpi-label">LEAR error (MAE)</div>
+<div class="kpi-value">`r mae("lear")`</div>
+<div class="kpi-sub">€/MWh, last 30 days</div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #9aa5b1">
+<div class="kpi-label">Naive error (MAE)</div>
+<div class="kpi-value">`r mae("naive_day")`</div>
+<div class="kpi-sub">€/MWh, last 30 days</div>
+</div>
+:::
+
+## Row
+
+```{r}
+#| title: "Live forecasts vs actual prices, last 30 days (EUR/MWh)"
 if (nrow(scored) == 0) {
   cat("The track record starts once the first forecast day has passed.")
 } else {
-  p2 <- scored |>
-    mutate(time = as_datetime(date, tz = "Europe/Copenhagen") + hours(hour)) |>
-    ggplot(aes(time)) +
-    geom_line(aes(y = actual, colour = "Actual"), linewidth = 0.5) +
-    geom_line(aes(y = lear,   colour = "LEAR forecast"), linewidth = 0.5) +
-    scale_colour_manual(values = c("Actual" = "black", "LEAR forecast" = "#1f5fbf")) +
-    labs(x = NULL, y = "EUR/MWh", colour = NULL) +
-    theme_minimal()
+  sc <- scored |> mutate(time = as_datetime(date, tz = "Europe/Copenhagen") + hours(hour))
 
-  ggplotly(p2) |> layout(legend = list(orientation = "h", y = -0.2))
+  p2 <- plot_ly(sc, x = ~time) |>
+    add_lines(y = ~actual, name = "Actual",
+              line = list(color = "#2b2d42", width = 1.5),
+              hovertemplate = "%{y:.1f} €/MWh<extra>Actual</extra>")
+
+  for (m in models) {
+    p2 <- p2 |>
+      add_lines(y = sc[[m]], name = model_labels[[m]],
+                visible = (m == models[1]),
+                line = list(color = model_colors[[m]], width = 1.5),
+                hovertemplate = paste0("%{y:.1f} €/MWh<extra>", model_labels[[m]], "</extra>"))
+  }
+
+  p2 |> chart_layout(models)
 }
 ```
+
+## Row {height=30%}
 
 ```{r}
+#| title: "Accuracy by model, last 30 days"
 if (nrow(scored) > 0) {
-  tibble(
-    Model = c("LEAR", "Naive (same hour yesterday)"),
-    `MAE (EUR/MWh)`  = c(mean(abs(scored$actual - scored$lear)),
-                         mean(abs(scored$actual - scored$naive_day))),
-    `RMSE (EUR/MWh)` = c(sqrt(mean((scored$actual - scored$lear)^2)),
-                         sqrt(mean((scored$actual - scored$naive_day)^2)))
-  ) |>
-    knitr::kable(digits = 1, caption = paste("Last", n_distinct(scored$date), "forecast days"))
+  lapply(models, \(m) {
+    s <- scored[!is.na(scored[[m]]), ]
+    tibble(Model            = model_labels[[m]],
+           `Days tracked`   = n_distinct(s$date),
+           `MAE (€/MWh)`    = mean(abs(s$actual - s[[m]])),
+           `RMSE (€/MWh)`   = sqrt(mean((s$actual - s[[m]])^2)))
+  }) |>
+    bind_rows() |>
+    arrange(`MAE (€/MWh)`) |>
+    knitr::kable(digits = 1)
 }
 ```
 
-## Backtest (Oct 2025 – Oct 2026)
+# Method
 
-| Model | MAE | RMSE |
+## Row
+
+::: {.card title="Backtest: October 2025 – October 2026"}
+
+Rolling out-of-sample forecasts for every day of the test year (≈ 8,800 hourly forecasts).
+
+| Model | MAE (€/MWh) | RMSE (€/MWh) |
 |---|---|---|
 | **LEAR** | **22.7** | **35.8** |
 | Naive: same hour yesterday | 30.8 | 46.8 |
 | Naive: weekly mix | 34.2 | 51.4 |
 
-## Method
+LEAR cuts the average error by about 26% compared with the best naive benchmark.
 
-**LEAR** (LASSO estimated auto regressive model. Inspired by Lago(2021) ): one LASSO regression per hour, in total 24 regressions
-using all 24 prices from day D-1, D-2, D-3 and D-7 plus weekday dummies. Each forecast is
-estimated on the previous two years, with lambda chosen by BIC. Prices are transformed with
-asinh((p − median) / MAD) to handle spikes and negative prices.
+:::
 
-Data: [Energi Data Service](https://www.energidataservice.dk) (Energinet).
-Code: [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting).
-Last updated: `r format(with_tz(Sys.time(), "Europe/Copenhagen"), "%d %B %Y, %H:%M")` (Danish time).
+::: {.card title="How it works"}
+
+**LEAR** (LASSO-estimated autoregressive model, inspired by Lago (2021): one LASSO
+regression per hour, 24 regressions in total, each using all 24 prices from days D-1, D-2, D-3
+and D-7 plus weekday dummies. Each forecast is estimated on the previous two years, with lambda
+chosen by BIC. Prices are transformed with asinh((p − median) / MAD) to handle spikes and
+negative prices.
+
+**Live track record:** every morning before the noon auction, the forecast for the next day is
+saved and never changed afterwards.
+
+**Data:** [Energi Data Service](https://www.energidataservice.dk) (Energinet).<br>
+**Code:** [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting)<br>
+**Last updated:** `r format(with_tz(Sys.time(), "Europe/Copenhagen"), "%d %B %Y, %H:%M")` (Danish time)
+
+:::
