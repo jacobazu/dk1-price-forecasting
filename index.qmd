@@ -1,5 +1,5 @@
 ---
-title: "DK1 Day-Ahead Electricity Price Forecast"
+title: "DK1 day ahead electricity price"
 format:
   dashboard:
     theme: flatly
@@ -262,7 +262,7 @@ LEAR cuts the average error by about 26% compared with the best naive benchmark.
 
 ::: {.card title="How it works"}
 
-**LEAR** (LASSO-estimated autoregressive model, inspired by Lago (2021): one LASSO
+**LEAR** inspired by Lago (2021): one LASSO
 regression per hour, 24 regressions in total, each using all 24 prices from days D-1, D-2, D-3
 and D-7 plus weekday dummies. Each forecast is estimated on the previous two years, with lambda
 chosen by BIC. Prices are transformed with asinh((p − median) / MAD) to handle spikes and
