@@ -1,11 +1,4 @@
-# one-click local preview of the dashboard
-# open this file in RStudio and press Source (Ctrl+Shift+S)
-#
-# 1. updates the prices (01_download.R + 02_clean.R)
-# 2. makes a test forecast for tomorrow (05_forecast_tomorrow.R)
-# 3. renders index.qmd and opens it in the browser
-# 4. puts forecasts/forecasts_live.csv back exactly as it was,
-#    so the test forecast never ends up on GitHub
+
 
 update_prices <- TRUE   # set to FALSE to skip the download and just re-render
 
