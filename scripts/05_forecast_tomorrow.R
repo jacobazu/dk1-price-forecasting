@@ -38,7 +38,10 @@ dir.create("forecasts", showWarnings = FALSE)
 file <- "forecasts/forecasts_live.csv"
 
 if (file.exists(file)) {
-  old <- read_csv(file, show_col_types = FALSE)
+  # read the time stamp as text, so it matches the new rows when combined
+  old <- read_csv(file, show_col_types = FALSE,
+                  col_types = cols(forecast_made_utc = col_character(),
+                                   .default = col_guess()))
   if (target %in% as_date(old$date)) {
     message("Forecast for ", target, " already exists - not overwriting.")
   } else {

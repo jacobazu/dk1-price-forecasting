@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   forecast:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -30,11 +30,8 @@ jobs:
 
       - uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Download and clean prices
-        run: |
-          mkdir -p data/raw data/processed
-          Rscript scripts/01_download.R
-          Rscript scripts/02_clean.R
+      - name: Update price data (rolling 2-year window)
+        run: Rscript scripts/01_update_live.R
 
       - name: Forecast tomorrow
         if: github.event_name != 'push'
@@ -45,8 +42,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add forecasts/forecasts_live.csv
-          git commit -m "Forecast for $(date -u -d tomorrow +%F)" || echo "Nothing new to commit"
+          git add forecasts/forecasts_live.csv live/prices_dk1_live.csv
+          git commit -m "Forecast and prices for $(date -u -d tomorrow +%F)" || echo "Nothing new to commit"
           git push
 
       - name: Build dashboard
