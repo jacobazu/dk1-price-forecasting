@@ -1,26 +1,26 @@
-# economic evaluation: what are the forecasts worth for a battery
-# every day the battery plans tomorrow from the forecast (charge cheap, sell expensive)
+# economic evaluation of the forecasts with a battery
+# each day the battery plans tomorrow using the forecast, buy cheap and sell expensive
 # the plan is then paid with the actual prices
-# perfect foresight (knowing the actual prices) is the upper bound
-# needs data/processed/forecasts_lear.rds from 04_lear.R
+# perfect foresight = knowing the actual prices, used as upper bound
+# needs forecasts_lear.rds from 04_lear.R
 
 library(dplyr)
 library(tidyr)
 library(lubridate)
-library(lpSolve)     # install.packages("lpSolve") the first time
+library(lpSolve)     # install.packages("lpSolve") first time
 library(ggplot2)
 
 # battery
-cap_mwh   <- 2       # storage in MWh
-power_mw  <- 1       # max charge or discharge per hour in MW
+cap_mwh   <- 2       # storage, MWh
+power_mw  <- 1       # max charge/discharge per hour, MW
 eff_rt    <- 0.90    # round trip efficiency
-max_cycle <- 1       # full cycles per day, limits wear
-eff       <- sqrt(eff_rt)   # same loss when charging and discharging
+max_cycle <- 1       # full cycles per day
+eff       <- sqrt(eff_rt)   # loss split on charge and discharge
 
-# lear backtest forecasts, date and hour in danish time
+# lear forecasts from the backtest, danish time
 fc <- readRDS("data/processed/forecasts_lear.rds")
 
-# naive same hour yesterday, from the actual prices
+# naive forecast, same hour yesterday
 fc <- fc |>
   left_join(fc |> transmute(date = date + 1, hour, naive_day = actual),
             by = c("date", "hour")) |>
@@ -31,7 +31,7 @@ fc <- fc |>
   arrange(date, hour)
 
 
-# lp for one day, same constraints every day, only the prices change
+# linear program for one day. constraints are the same every day, only prices change
 # variables: charge c1..c24, discharge d1..d24, state of charge s1..s24
 n  <- 24
 ic <- 1:n
@@ -41,7 +41,7 @@ soc <- 2 * n + 1:n
 A <- matrix(0, 0, 3 * n); dirs <- c(); rhs <- c()
 new_row <- function() numeric(3 * n)
 
-# state of charge: s_h = s_(h-1) + eff * c_h - d_h / eff, empty at the start
+# state of charge s_h = s_(h-1) + eff*c_h - d_h/eff, starts empty
 for (h in 1:n) {
   r <- new_row()
   r[soc[h]] <- 1
@@ -51,7 +51,7 @@ for (h in 1:n) {
   A <- rbind(A, r); dirs <- c(dirs, "="); rhs <- c(rhs, 0)
 }
 
-# empty at the end of the day
+# empty at end of day
 r <- new_row(); r[soc[n]] <- 1
 A <- rbind(A, r); dirs <- c(dirs, "="); rhs <- c(rhs, 0)
 
@@ -65,20 +65,20 @@ for (h in 1:n) {
   A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, power_mw)
 }
 
-# max cycles per day
+# cycle limit
 r <- new_row(); r[id] <- 1
 A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, cap_mwh * max_cycle)
 
-# best plan for a price curve, returns MWh sold per hour (negative = bought)
+# optimal plan for given prices, returns MWh sold per hour (negative = bought)
 schedule <- function(price) {
-  obj <- c(-price, price, rep(0, n))   # pay when charging, earn when selling
+  obj <- c(-price, price, rep(0, n))   # pay for charging, earn from selling
   sol <- lp("max", obj, A, dirs, rhs)
   if (sol$status != 0) stop("lp did not solve")
   sol$solution[id] - sol$solution[ic]
 }
 
 
-# plan on each forecast, get paid the actual price
+# plan with each forecast, paid with actual prices
 strategies <- c(perfect = "actual", lear = "lear", naive_day = "naive_day", naive_mix = "naive_mix")
 days <- unique(fc$date)
 
@@ -104,8 +104,8 @@ summary_tbl <- profit |>
 print(summary_tbl)
 
 
-# is the extra profit from lear real? test on the daily profit differences
-# newey west standard error since days are autocorrelated (dm test idea, loss = lost profit)
+# test if lear earns significantly more, using daily profit differences
+# newey west standard errors because of autocorrelation (like a dm test with profit as loss)
 nw_test <- function(d, lag = 7) {
   n <- length(d)
   e <- d - mean(d)
@@ -133,7 +133,7 @@ p <- profit |>
   theme_minimal()
 print(p)
 
-# save for the dashboard later
+# save results for the dashboard
 saveRDS(list(profit = profit, summary = summary_tbl,
              battery = c(cap_mwh = cap_mwh, power_mw = power_mw,
                          eff_rt = eff_rt, max_cycle = max_cycle)),
