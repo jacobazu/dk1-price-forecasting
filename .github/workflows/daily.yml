@@ -7,8 +7,10 @@ on:
     - cron: "0 8 * * *"   # 08:00 UTC = 09:00/10:00 Danish time
   workflow_dispatch:       # "Run workflow" button
   push:
+    branches: [master]     # design branches don't rebuild the live site
     paths:
       - "index.qmd"
+      - "vision.scss"
 
 permissions:
   contents: write          # to commit the new forecast
