@@ -27,7 +27,14 @@ jobs:
         with:
           use-public-rspm: true
 
+      # packages from renv.lock (same versions as on my pc)
+      - name: Install R packages (renv)
+        if: hashFiles('renv.lock') != ''
+        uses: r-lib/actions/setup-renv@v2
+
+      # fallback if there is no renv.lock yet
       - name: Install R packages
+        if: hashFiles('renv.lock') == ''
         run: Rscript -e 'install.packages(c("httr2", "jsonlite", "dplyr", "tidyr", "lubridate", "glmnet", "ggplot2", "plotly", "readr", "knitr", "rmarkdown"))'
 
       - uses: quarto-dev/quarto-actions/setup@v2
