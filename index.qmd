@@ -2,22 +2,15 @@
 title: "DK1 day ahead electricity price"
 format:
   dashboard:
-    theme: flatly
+    theme: [darkly, vision.scss]
     embed-resources: true
     nav-buttons:
       - icon: github
         href: https://github.com/jacobazu/dk1-price-forecasting
     include-in-header:
       text: |
-        <style>
-          /* key-number tiles: white card, coloured strip on the left */
-          .kpi { height: 100%; display: flex; flex-direction: column; justify-content: center;
-                 padding: 0.2rem 0.9rem; border-left: 4px solid var(--accent, #1f5fbf); }
-          .kpi-label { font-size: 0.8rem; color: #6c757d; text-transform: uppercase;
-                       letter-spacing: 0.05em; }
-          .kpi-value { font-size: 2.1rem; font-weight: 600; color: #2c3e50; line-height: 1.15; }
-          .kpi-sub   { font-size: 0.9rem; color: #6c757d; }
-        </style>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 execute:
   echo: false
   warning: false
@@ -33,8 +26,15 @@ library(plotly)
 
 Sys.setlocale("LC_TIME", "C")   # English day and month names, also on a Danish computer
 
-blue <- "#1f5fbf"
-grey <- "#9aa5b1"
+blue  <- "#0075ff"
+grey  <- "#a0aec0"
+white <- "#e2e8f0"
+
+# "#rrggbb" -> "rgba(r,g,b,a)", for the soft fill under forecast lines
+alpha_col <- function(hex, a) {
+  v <- grDevices::col2rgb(hex)
+  sprintf("rgba(%d,%d,%d,%.2f)", v[1], v[2], v[3], a)
+}
 
 # actual prices in DK time
 actual <- readRDS("data/processed/prices_dk1_hourly.rds") |>
@@ -58,6 +58,13 @@ scored <- fc |>
   filter(date >= max(date) - 29)
 
 eur  <- function(x) format(round(x, 1), nsmall = 1)
+
+# tomorrow vs today, shown as +/- in the first tile
+diff_today <- mean(tomorrow$lear) - mean(today_act$actual)
+diff_html  <- if (is.na(diff_today)) "" else
+  sprintf('<span class="%s">%s%s</span> vs today',
+          if (diff_today > 0) "kpi-up" else "kpi-down",
+          if (diff_today > 0) "+" else "−", eur(abs(diff_today)))
 hour_label <- function(h) sprintf("%02d:00", h)
 
 # numbers for the tiles
@@ -73,11 +80,11 @@ model_labels <- c(lear      = "LEAR",
                   xgb       = "XGBoost",
                   ensemble  = "Ensemble",
                   naive_day = "Naive")
-model_colors <- c(lear      = "#1f5fbf",
-                  lear_x    = "#e07b00",
-                  xgb       = "#2a9d55",
-                  ensemble  = "#7b3fbf",
-                  naive_day = "#9aa5b1")
+model_colors <- c(lear      = "#0075ff",
+                  lear_x    = "#f6ad55",
+                  xgb       = "#01b574",
+                  ensemble  = "#9f7aea",
+                  naive_day = "#a0aec0")
 models <- intersect(names(model_labels), names(fc))
 
 # Buttons above a chart: one per model, plus "All".
@@ -93,16 +100,25 @@ model_menu <- function(models) {
                                   args = list("visible", as.list(rep(TRUE, n + 1))))))
   list(list(type = "buttons", direction = "right", active = 0, showactive = TRUE,
             x = 0, xanchor = "left", y = 1.02, yanchor = "bottom",
-            bgcolor = "#f4f6f9", bordercolor = "#d5dae1", font = list(size = 13),
+            bgcolor = "#cbd5e0", bordercolor = "#cbd5e0",       # plotly always draws the
+            font = list(size = 13, color = "#0b0f33"),          # active button near-white
             buttons = buttons))
 }
 
 chart_layout <- function(p, models, xtitle = "") {
   p |>
-    layout(xaxis = list(title = xtitle, showgrid = FALSE),
-           yaxis = list(title = "", gridcolor = "#eceff3", zerolinecolor = "#c8ced6"),
-           legend = list(orientation = "h", x = 0, y = -0.15),
+    layout(paper_bgcolor = "rgba(0,0,0,0)",
+           plot_bgcolor  = "rgba(0,0,0,0)",
+           # system font in charts: plotly sizes buttons before web fonts load
+           font = list(family = "Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
+           xaxis = list(title = xtitle, showgrid = FALSE, zeroline = FALSE, color = grey,
+                        linecolor = "rgba(255,255,255,0.15)"),
+           yaxis = list(title = "", color = grey, gridcolor = "rgba(255,255,255,0.07)",
+                        zerolinecolor = "rgba(255,255,255,0.3)"),
+           legend = list(orientation = "h", x = 0, y = -0.15, font = list(color = white)),
            hovermode = "x unified",
+           hoverlabel = list(bgcolor = "#0f1535", bordercolor = "#2d3366",
+                             font = list(color = "#ffffff")),
            margin = list(t = 50),
            updatemenus = model_menu(models)) |>
     config(displayModeBar = FALSE)
@@ -114,34 +130,46 @@ chart_layout <- function(p, models, xtitle = "") {
 ## Row {height=18%}
 
 ::: {.card}
-<div class="kpi" style="--accent: #1f5fbf">
+<div class="kpi" style="--accent: #0075ff">
+<div>
 <div class="kpi-label">Average price tomorrow</div>
-<div class="kpi-value">`r eur(mean(tomorrow$lear))`</div>
-<div class="kpi-sub">€/MWh · today `r eur(mean(today_act$actual))`</div>
+<div class="kpi-value">`r eur(mean(tomorrow$lear))`<span class="kpi-unit">€/MWh</span></div>
+<div class="kpi-sub">`r diff_html`</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-lightning-charge-fill"></i></div>
 </div>
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #2a9d55">
+<div class="kpi" style="--accent: #01b574">
+<div>
 <div class="kpi-label">Cheapest hour</div>
 <div class="kpi-value">`r hour_label(cheap$hour)`</div>
 <div class="kpi-sub">`r eur(cheap$lear)` €/MWh</div>
 </div>
-:::
-
-::: {.card}
-<div class="kpi" style="--accent: #d64550">
-<div class="kpi-label">Most expensive hour</div>
-<div class="kpi-value">`r hour_label(peak$hour)`</div>
-<div class="kpi-sub">`r eur(peak$lear)` €/MWh</div>
+<div class="kpi-icon"><i class="bi bi-arrow-down-circle-fill"></i></div>
 </div>
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #9aa5b1">
+<div class="kpi" style="--accent: #e31a1a">
+<div>
+<div class="kpi-label">Most expensive hour</div>
+<div class="kpi-value">`r hour_label(peak$hour)`</div>
+<div class="kpi-sub">`r eur(peak$lear)` €/MWh</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-arrow-up-circle-fill"></i></div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #9f7aea">
+<div>
 <div class="kpi-label">Backtest accuracy</div>
 <div class="kpi-value">−26%</div>
 <div class="kpi-sub">error vs naive benchmark (MAE)</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-bullseye"></i></div>
 </div>
 :::
 
@@ -164,6 +192,7 @@ for (m in fc_models) {
               name = paste0(model_labels[[m]], ", ", format(latest, "%a %d %b")),
               visible = (m == fc_models[1]),
               line = list(color = model_colors[[m]], width = 3),
+              fill = "tozeroy", fillcolor = alpha_col(model_colors[[m]], 0.15),
               hovertemplate = paste0("%{y:.1f} €/MWh<extra>", model_labels[[m]], "</extra>"))
 }
 
@@ -175,26 +204,35 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)") |> layout(xaxis = li
 ## Row {height=18%}
 
 ::: {.card}
-<div class="kpi" style="--accent: #1f5fbf">
+<div class="kpi" style="--accent: #0075ff">
+<div>
 <div class="kpi-label">Days tracked</div>
 <div class="kpi-value">`r n_distinct(scored$date)`</div>
 <div class="kpi-sub">`r if (has_scores) paste("since", format(min(scored$date), "%d %b %Y")) else "starts after the first forecast day"`</div>
 </div>
-:::
-
-::: {.card}
-<div class="kpi" style="--accent: #2a9d55">
-<div class="kpi-label">LEAR error (MAE)</div>
-<div class="kpi-value">`r mae("lear")`</div>
-<div class="kpi-sub">€/MWh, last 30 days</div>
+<div class="kpi-icon"><i class="bi bi-calendar-check-fill"></i></div>
 </div>
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #9aa5b1">
+<div class="kpi" style="--accent: #01b574">
+<div>
+<div class="kpi-label">LEAR error (MAE)</div>
+<div class="kpi-value">`r mae("lear")`</div>
+<div class="kpi-sub">€/MWh, last 30 days</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-graph-up-arrow"></i></div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #4a5568">
+<div>
 <div class="kpi-label">Naive error (MAE)</div>
 <div class="kpi-value">`r mae("naive_day")`</div>
 <div class="kpi-sub">€/MWh, last 30 days</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-arrow-repeat"></i></div>
 </div>
 :::
 
@@ -209,7 +247,7 @@ if (nrow(scored) == 0) {
 
   p2 <- plot_ly(sc, x = ~time) |>
     add_lines(y = ~actual, name = "Actual",
-              line = list(color = "#2b2d42", width = 1.5),
+              line = list(color = white, width = 1.5),
               hovertemplate = "%{y:.1f} €/MWh<extra>Actual</extra>")
 
   for (m in models) {
