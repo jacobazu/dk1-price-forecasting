@@ -67,6 +67,9 @@ body,
   padding-top: 1rem;
 }
 
+// hide the "Expand" (full-screen) button that appears on every card
+.bslib-full-screen-enter { display: none !important; }
+
 // key-number tiles: text on the left, icon chip on the right
 // (!important beats the dashboard's own "fill" layout, which stacks every div)
 .kpi {
