@@ -1,6 +1,6 @@
 /*-- scss:defaults --*/
 
-// dark "glass" look inspired by the Vision UI dashboard style
+// dark theme for the dashboard
 $font-family-sans-serif: "Plus Jakarta Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 
 $body-bg:      #0b0f33;
@@ -28,8 +28,8 @@ $table-border-color: rgba(255, 255, 255, 0.08);
 
 /*-- scss:rules --*/
 
-// page background: deep navy gradient that stays put while scrolling
-// (html gets a solid colour so long pages on phones never show white below)
+// background
+// html colour so phones dont show white at the bottom
 html { background-color: #050826; }
 body,
 .quarto-dashboard .page-layout-custom,
@@ -37,7 +37,7 @@ body,
   background: linear-gradient(159deg, #0f123b 14%, #090d2e 56%, #020515 86%) fixed !important;
 }
 
-// top bar
+// navbar
 .navbar {
   background: rgba(8, 11, 42, 0.85) !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -49,7 +49,7 @@ body,
 .navbar .nav-link:hover { color: #ffffff !important; }
 .navbar .nav-link.active { box-shadow: inset 0 -2px 0 #0075ff; }
 
-// glass cards
+// cards
 .quarto-dashboard .card {
   background: linear-gradient(127deg, rgba(6, 11, 40, 0.94) 19%, rgba(10, 14, 35, 0.49) 76%) !important;
   backdrop-filter: blur(60px);
@@ -67,11 +67,11 @@ body,
   padding-top: 1rem;
 }
 
-// hide the "Expand" (full-screen) button that appears on every card
+// remove expand button on cards
 .bslib-full-screen-enter { display: none !important; }
 
-// key-number tiles: text on the left, icon chip on the right
-// (!important beats the dashboard's own "fill" layout, which stacks every div)
+// kpi tiles, text left and icon right
+// important needed, otherwise quarto stacks the divs
 .kpi {
   height: 100%;
   display: flex !important;
@@ -114,7 +114,7 @@ body,
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
 }
 
-// tables (accuracy table and method card)
+// tables
 .quarto-dashboard table {
   color: #ffffff;
   --bs-table-bg: transparent;
@@ -124,6 +124,7 @@ body,
 .quarto-dashboard table td,
 .quarto-dashboard table th { border-color: rgba(255, 255, 255, 0.08); }
 
+// links
 a { text-decoration: none; }
 a:hover { text-decoration: underline; }
 .navbar a:hover { text-decoration: none; }
