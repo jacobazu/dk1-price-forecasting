@@ -114,6 +114,28 @@ body,
 .quarto-dashboard table th { border-color: #efe6dc; }
 .quarto-dashboard table > :not(:first-child) { border-top: 1px solid #efe6dc !important; }
 
+// model buttons above the charts
+.model-buttons {
+  position: absolute;
+  top: 6px;
+  left: 12px;
+  z-index: 10;
+  display: flex;
+  gap: 10px;
+}
+.model-buttons button {
+  border: 1px solid #f6c9a4;
+  background: #fff7f0;
+  color: #1f2328;
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.model-buttons button:hover { background: #fde7d4; }
+.model-buttons button.active { background: #f97316; border-color: #f97316; color: #ffffff; }
+
 // links
 a { text-decoration: none; }
 a:hover { text-decoration: underline; }

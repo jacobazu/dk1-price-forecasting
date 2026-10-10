@@ -30,12 +30,6 @@ orange <- "#f97316"
 grey   <- "#6b7280"
 ink    <- "#1f2328"
 
-# hex colour to rgba, used for the fill under the forecast
-alpha_col <- function(hex, a) {
-  v <- grDevices::col2rgb(hex)
-  sprintf("rgba(%d,%d,%d,%.2f)", v[1], v[2], v[3], a)
-}
-
 # actual prices in DK time
 actual <- readRDS("data/processed/prices_dk1_hourly.rds") |>
   mutate(local = with_tz(time, "Europe/Copenhagen"),
@@ -87,29 +81,35 @@ model_colors <- c(lear      = "#f97316",
                   naive_day = "#9ca3af")
 models <- intersect(names(model_labels), names(fc))
 
-# Buttons above a chart: one per model, plus "All".
-# The chart's first trace (actual prices) is always shown.
-model_menu <- function(models) {
-  n <- length(models)
-  buttons <- lapply(models, \(m) list(
-    method = "restyle",
-    label  = model_labels[[m]],
-    args   = list("visible", as.list(c(TRUE, models == m)))
-  ))
-  buttons <- c(buttons, list(list(method = "restyle", label = "All",
-                                  args = list("visible", as.list(rep(TRUE, n + 1))))))
-  list(list(type = "buttons", direction = "right", active = 0, showactive = TRUE,
-            x = 0, xanchor = "left", y = 1.02, yanchor = "bottom",
-            bgcolor = "#fde7d4", bordercolor = "#f6c9a4",       # light orange buttons,
-            font = list(size = 13, color = ink),                # active one is white
-            buttons = buttons))
+# buttons above a chart: one per model plus "All", actual prices are always shown
+# html buttons instead of plotly's own, so they can be styled in theme.scss
+model_buttons <- function(p, models) {
+  vis <- c(lapply(models, \(m) c(TRUE, models == m)), list(rep(TRUE, length(models) + 1)))
+  htmlwidgets::onRender(p, "
+    function(el, x, data) {
+      el.style.position = 'relative';
+      var bar = document.createElement('div');
+      bar.className = 'model-buttons';
+      data.labels.forEach(function(lab, i) {
+        var b = document.createElement('button');
+        b.textContent = lab;
+        if (i === 0) b.className = 'active';
+        b.onclick = function() {
+          Plotly.restyle(el, {visible: data.visible[i]});
+          bar.querySelectorAll('button').forEach(function(o) { o.className = ''; });
+          b.className = 'active';
+        };
+        bar.appendChild(b);
+      });
+      el.appendChild(bar);
+    }",
+    data = list(labels = c(unname(model_labels[models]), "All"), visible = vis))
 }
 
 chart_layout <- function(p, models, xtitle = "") {
   p |>
     layout(paper_bgcolor = "rgba(0,0,0,0)",
            plot_bgcolor  = "rgba(0,0,0,0)",
-           # normal font in charts, otherwise button text gets cut off
            font = list(family = "Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
            xaxis = list(title = xtitle, showgrid = FALSE, zeroline = FALSE, color = grey,
                         linecolor = "#e5ddd3"),
@@ -119,15 +119,15 @@ chart_layout <- function(p, models, xtitle = "") {
            hovermode = "x unified",
            hoverlabel = list(bgcolor = "#ffffff", bordercolor = "#efe6dc",
                              font = list(color = ink)),
-           margin = list(t = 50),
-           updatemenus = model_menu(models)) |>
-    config(displayModeBar = FALSE)
+           margin = list(t = 50)) |>
+    config(displayModeBar = FALSE) |>
+    model_buttons(models)
 }
 ```
 
 # Forecast
 
-## Row {height=18%}
+## Row {height=14%}
 
 ::: {.card}
 <div class="kpi" style="--accent: #f97316">
@@ -167,13 +167,13 @@ chart_layout <- function(p, models, xtitle = "") {
 <div>
 <div class="kpi-label">Backtest accuracy</div>
 <div class="kpi-value">−26%</div>
-<div class="kpi-sub">error vs naive benchmark (MAE)</div>
+<div class="kpi-sub">error vs naive (MAE)</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-bullseye"></i></div>
 </div>
 :::
 
-## Row
+## Row {height=86%}
 
 ```{r}
 #| title: "Tomorrow's forecast vs today's prices (EUR/MWh)"
@@ -192,7 +192,6 @@ for (m in fc_models) {
               name = paste0(model_labels[[m]], ", ", format(latest, "%a %d %b")),
               visible = (m == fc_models[1]),
               line = list(color = model_colors[[m]], width = 3),
-              fill = "tozeroy", fillcolor = alpha_col(model_colors[[m]], 0.15),
               hovertemplate = paste0("%{y:.1f} €/MWh<extra>", model_labels[[m]], "</extra>"))
 }
 
@@ -201,7 +200,7 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)") |> layout(xaxis = li
 
 # Track record
 
-## Row {height=18%}
+## Row {height=14%}
 
 ::: {.card}
 <div class="kpi" style="--accent: #f97316">
@@ -236,7 +235,7 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)") |> layout(xaxis = li
 </div>
 :::
 
-## Row
+## Row {height=56%}
 
 ```{r}
 #| title: "Live forecasts vs actual prices, last 30 days (EUR/MWh)"
