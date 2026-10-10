@@ -30,7 +30,7 @@ blue  <- "#0075ff"
 grey  <- "#a0aec0"
 white <- "#e2e8f0"
 
-# "#rrggbb" -> "rgba(r,g,b,a)", for the soft fill under forecast lines
+# hex colour to rgba, used for the fill under the forecast
 alpha_col <- function(hex, a) {
   v <- grDevices::col2rgb(hex)
   sprintf("rgba(%d,%d,%d,%.2f)", v[1], v[2], v[3], a)
@@ -59,7 +59,7 @@ scored <- fc |>
 
 eur  <- function(x) format(round(x, 1), nsmall = 1)
 
-# tomorrow vs today, shown as +/- in the first tile
+# difference tomorrow vs today for the first tile
 diff_today <- mean(tomorrow$lear) - mean(today_act$actual)
 diff_html  <- if (is.na(diff_today)) "" else
   sprintf('<span class="%s">%s%s</span> vs today',
@@ -100,8 +100,8 @@ model_menu <- function(models) {
                                   args = list("visible", as.list(rep(TRUE, n + 1))))))
   list(list(type = "buttons", direction = "right", active = 0, showactive = TRUE,
             x = 0, xanchor = "left", y = 1.02, yanchor = "bottom",
-            bgcolor = "#cbd5e0", bordercolor = "#cbd5e0",       # plotly always draws the
-            font = list(size = 13, color = "#0b0f33"),          # active button near-white
+            bgcolor = "#cbd5e0", bordercolor = "#cbd5e0",       # light buttons, plotly makes
+            font = list(size = 13, color = "#0b0f33"),          # the active one white anyway
             buttons = buttons))
 }
 
@@ -109,7 +109,7 @@ chart_layout <- function(p, models, xtitle = "") {
   p |>
     layout(paper_bgcolor = "rgba(0,0,0,0)",
            plot_bgcolor  = "rgba(0,0,0,0)",
-           # system font in charts: plotly sizes buttons before web fonts load
+           # normal font in charts, otherwise button text gets cut off
            font = list(family = "Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
            xaxis = list(title = xtitle, showgrid = FALSE, zeroline = FALSE, color = grey,
                         linecolor = "rgba(255,255,255,0.15)"),

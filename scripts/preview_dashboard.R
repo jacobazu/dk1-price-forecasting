@@ -1,6 +1,6 @@
 
 
-update_prices <- TRUE   # set to FALSE to skip the download and just re-render
+update_prices <- TRUE   # FALSE = skip download, only render
 
 if (!file.exists("index.qmd")) {
   stop("Open the dk1-price-forecasting project in RStudio first (the .Rproj file).")
@@ -8,7 +8,7 @@ if (!file.exists("index.qmd")) {
 dir.create("data/raw", recursive = TRUE, showWarnings = FALSE)
 dir.create("data/processed", recursive = TRUE, showWarnings = FALSE)
 
-# find Quarto: on PATH, or the copy bundled with RStudio
+# find quarto, either on PATH or the one in RStudio
 quarto_bin <- Sys.which("quarto")
 if (!nzchar(quarto_bin)) {
   bundled    <- file.path(dirname(Sys.getenv("RSTUDIO_PANDOC")), c("quarto.exe", "quarto"))
@@ -18,7 +18,7 @@ if (is.na(quarto_bin) || !nzchar(quarto_bin)) {
   stop("Quarto not found. Install it from https://quarto.org or run this from RStudio.")
 }
 
-# remember the forecast file so it can be restored afterwards
+# save forecast file so it can be put back after
 file_fc  <- "forecasts/forecasts_live.csv"
 had_file <- file.exists(file_fc)
 backup   <- tempfile(fileext = ".csv")
@@ -38,7 +38,7 @@ tryCatch({
   browseURL(normalizePath("index.html"))
   message("\nDone: the dashboard is open in your browser.")
 }, finally = {
-  # restore the forecast file exactly as it was before the preview
+  # put forecast file back like before
   if (had_file) {
     file.copy(backup, file_fc, overwrite = TRUE)
   } else if (file.exists(file_fc)) {

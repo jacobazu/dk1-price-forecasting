@@ -1,18 +1,18 @@
-# daily update of the live price file used by GitHub Actions:
-# add the newest days, drop days older than the 2-year window.
-# the full 2019+ history for backtests still comes from 01_download.R + 02_clean.R
+# updating the live price file on github every day
+# adds the newest days and removes days older than 2 years
+# full history for backtests still comes from 01_download.R and 02_clean.R
 
 library(dplyr)
 library(lubridate)
 library(readr)
 source("R/get_eds.R")
 
-keep_days <- 740                       # 730 training days + buffer for the D-7 lags
-switch_dt <- as.Date("2025-10-01")     # hourly prices end, 15-minute prices start
+keep_days <- 740                       # 730 days for training + buffer for D-7 lag
+switch_dt <- as.Date("2025-10-01")     # switch from hourly to 15 min prices
 file_live <- "live/prices_dk1_live.csv"
 dir.create("live", showWarnings = FALSE)
 
-# 15-minute prices turned into hourly averages (same as 02_clean.R)
+# 15 min prices to hourly average, same as in 02_clean.R
 qh_to_hourly <- function(qh) {
   qh |>
     mutate(time = floor_date(ymd_hms(TimeUTC, tz = "UTC"), "hour")) |>
@@ -23,11 +23,11 @@ qh_to_hourly <- function(qh) {
 }
 
 if (file.exists(file_live)) {
-  # normal day: only download from the last saved day onwards
+  # normal day, only download from last saved day
   live <- read_csv(file_live, col_types = cols(time = col_datetime(), price = col_double()))
   from <- as_date(max(live$time)) - 1
 } else {
-  # first run: download the 2-year window once
+  # first run, download 2 years once
   start <- Sys.Date() - keep_days
   live  <- tibble(time = as.POSIXct(character(), tz = "UTC"), price = numeric())
   if (start < switch_dt) {
@@ -39,7 +39,7 @@ if (file.exists(file_live)) {
 
 new <- qh_to_hourly(get_eds("DayAheadPrices", format(from), format(Sys.Date() + 2)))
 
-# new rows replace overlapping old ones, then drop the oldest days
+# new rows overwrite old ones, then remove the oldest days
 cutoff <- as.POSIXct(Sys.Date() - keep_days, tz = "UTC")
 live <- bind_rows(new, live) |>
   distinct(time, .keep_all = TRUE) |>
@@ -48,8 +48,8 @@ live <- bind_rows(new, live) |>
 
 write_csv(live, file_live)
 
-# the forecast script and dashboard read this rds; only overwrite it on GitHub,
-# so the full 2019+ history on your PC is kept for backtests
+# forecast and dashboard read this rds. only overwrite on github
+# so the full history on my pc is kept
 if (Sys.getenv("GITHUB_ACTIONS") == "true") {
   dir.create("data/processed", recursive = TRUE, showWarnings = FALSE)
   saveRDS(live, "data/processed/prices_dk1_hourly.rds")
