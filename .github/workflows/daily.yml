@@ -10,7 +10,7 @@ on:
     branches: [master]     # only master rebuilds the site
     paths:
       - "index.qmd"
-      - "vision.scss"
+      - "theme.scss"
 
 permissions:
   contents: write          # to commit the new forecast

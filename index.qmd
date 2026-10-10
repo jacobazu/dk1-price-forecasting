@@ -2,7 +2,7 @@
 title: "DK1 day ahead electricity price"
 format:
   dashboard:
-    theme: [darkly, vision.scss]
+    theme: [cosmo, theme.scss]
     embed-resources: true
     nav-buttons:
       - icon: github
@@ -26,9 +26,9 @@ library(plotly)
 
 Sys.setlocale("LC_TIME", "C")   # English day and month names, also on a Danish computer
 
-blue  <- "#0075ff"
-grey  <- "#a0aec0"
-white <- "#e2e8f0"
+orange <- "#f97316"
+grey   <- "#6b7280"
+ink    <- "#1f2328"
 
 # hex colour to rgba, used for the fill under the forecast
 alpha_col <- function(hex, a) {
@@ -80,11 +80,11 @@ model_labels <- c(lear      = "LEAR",
                   xgb       = "XGBoost",
                   ensemble  = "Ensemble",
                   naive_day = "Naive")
-model_colors <- c(lear      = "#0075ff",
-                  lear_x    = "#f6ad55",
-                  xgb       = "#01b574",
-                  ensemble  = "#9f7aea",
-                  naive_day = "#a0aec0")
+model_colors <- c(lear      = "#f97316",
+                  lear_x    = "#0ea5e9",
+                  xgb       = "#16a34a",
+                  ensemble  = "#8b5cf6",
+                  naive_day = "#9ca3af")
 models <- intersect(names(model_labels), names(fc))
 
 # Buttons above a chart: one per model, plus "All".
@@ -100,8 +100,8 @@ model_menu <- function(models) {
                                   args = list("visible", as.list(rep(TRUE, n + 1))))))
   list(list(type = "buttons", direction = "right", active = 0, showactive = TRUE,
             x = 0, xanchor = "left", y = 1.02, yanchor = "bottom",
-            bgcolor = "#cbd5e0", bordercolor = "#cbd5e0",       # light buttons, plotly makes
-            font = list(size = 13, color = "#0b0f33"),          # the active one white anyway
+            bgcolor = "#fde7d4", bordercolor = "#f6c9a4",       # light orange buttons,
+            font = list(size = 13, color = ink),                # active one is white
             buttons = buttons))
 }
 
@@ -112,13 +112,13 @@ chart_layout <- function(p, models, xtitle = "") {
            # normal font in charts, otherwise button text gets cut off
            font = list(family = "Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
            xaxis = list(title = xtitle, showgrid = FALSE, zeroline = FALSE, color = grey,
-                        linecolor = "rgba(255,255,255,0.15)"),
-           yaxis = list(title = "", color = grey, gridcolor = "rgba(255,255,255,0.07)",
-                        zerolinecolor = "rgba(255,255,255,0.3)"),
-           legend = list(orientation = "h", x = 0, y = -0.15, font = list(color = white)),
+                        linecolor = "#e5ddd3"),
+           yaxis = list(title = "", color = grey, gridcolor = "#f1ebe4",
+                        zerolinecolor = "#cfc6bb"),
+           legend = list(orientation = "h", x = 0, y = -0.15, font = list(color = ink)),
            hovermode = "x unified",
-           hoverlabel = list(bgcolor = "#0f1535", bordercolor = "#2d3366",
-                             font = list(color = "#ffffff")),
+           hoverlabel = list(bgcolor = "#ffffff", bordercolor = "#efe6dc",
+                             font = list(color = ink)),
            margin = list(t = 50),
            updatemenus = model_menu(models)) |>
     config(displayModeBar = FALSE)
@@ -130,7 +130,7 @@ chart_layout <- function(p, models, xtitle = "") {
 ## Row {height=18%}
 
 ::: {.card}
-<div class="kpi" style="--accent: #0075ff">
+<div class="kpi" style="--accent: #f97316">
 <div>
 <div class="kpi-label">Average price tomorrow</div>
 <div class="kpi-value">`r eur(mean(tomorrow$lear))`<span class="kpi-unit">€/MWh</span></div>
@@ -141,7 +141,7 @@ chart_layout <- function(p, models, xtitle = "") {
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #01b574">
+<div class="kpi" style="--accent: #16a34a">
 <div>
 <div class="kpi-label">Cheapest hour</div>
 <div class="kpi-value">`r hour_label(cheap$hour)`</div>
@@ -152,7 +152,7 @@ chart_layout <- function(p, models, xtitle = "") {
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #e31a1a">
+<div class="kpi" style="--accent: #dc2626">
 <div>
 <div class="kpi-label">Most expensive hour</div>
 <div class="kpi-value">`r hour_label(peak$hour)`</div>
@@ -163,7 +163,7 @@ chart_layout <- function(p, models, xtitle = "") {
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #9f7aea">
+<div class="kpi" style="--accent: #c2410c">
 <div>
 <div class="kpi-label">Backtest accuracy</div>
 <div class="kpi-value">−26%</div>
@@ -204,7 +204,7 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)") |> layout(xaxis = li
 ## Row {height=18%}
 
 ::: {.card}
-<div class="kpi" style="--accent: #0075ff">
+<div class="kpi" style="--accent: #f97316">
 <div>
 <div class="kpi-label">Days tracked</div>
 <div class="kpi-value">`r n_distinct(scored$date)`</div>
@@ -215,7 +215,7 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)") |> layout(xaxis = li
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #01b574">
+<div class="kpi" style="--accent: #16a34a">
 <div>
 <div class="kpi-label">LEAR error (MAE)</div>
 <div class="kpi-value">`r mae("lear")`</div>
@@ -226,7 +226,7 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)") |> layout(xaxis = li
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #4a5568">
+<div class="kpi" style="--accent: #6b7280">
 <div>
 <div class="kpi-label">Naive error (MAE)</div>
 <div class="kpi-value">`r mae("naive_day")`</div>
@@ -247,7 +247,7 @@ if (nrow(scored) == 0) {
 
   p2 <- plot_ly(sc, x = ~time) |>
     add_lines(y = ~actual, name = "Actual",
-              line = list(color = white, width = 1.5),
+              line = list(color = ink, width = 1.5),
               hovertemplate = "%{y:.1f} €/MWh<extra>Actual</extra>")
 
   for (m in models) {
