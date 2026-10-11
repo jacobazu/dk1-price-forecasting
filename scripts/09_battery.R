@@ -16,8 +16,10 @@ eff_rt    <- 0.90    # round trip
 max_cycle <- 1       # cycles per day
 eff       <- sqrt(eff_rt)
 
-# lear backtest forecasts
-fc <- readRDS("data/processed/forecasts_lear.rds")
+# backtest forecasts from 04_lear.R and 06_bmt.R, same days for all
+fc <- readRDS("data/processed/forecasts_lear.rds") |>
+  inner_join(select(readRDS("data/processed/forecasts_bmt.rds"), date, hour, bmt),
+             by = c("date", "hour"))
 
 # naive, same hour yesterday
 fc <- fc |>
@@ -79,7 +81,8 @@ schedule <- function(price) {
 
 
 # plan with each forecast, paid with actual prices
-strategies <- c(perfect = "actual", lear = "lear", naive_day = "naive_day", naive_mix = "naive_mix")
+strategies <- c(perfect = "actual", bmt = "bmt", lear = "lear",
+                naive_day = "naive_day", naive_mix = "naive_mix")
 days <- unique(fc$date)
 
 profit <- lapply(days, \(dd) {
@@ -108,7 +111,7 @@ summary_tbl <- profit |>
 print(summary_tbl)
 
 
-# does lear earn significantly more? t test on daily profit differences, newey west se
+# does a model earn significantly more than another? t test on daily profit differences, newey west se
 nw_test <- function(d, lag = 7) {
   n <- length(d)
   e <- d - mean(d)
@@ -118,10 +121,14 @@ nw_test <- function(d, lag = 7) {
   c(mean_eur_per_day = mean(d), t = t, p_value = 2 * pnorm(-abs(t)))
 }
 
-t_day <- nw_test(profit$lear - profit$naive_day)
-t_mix <- nw_test(profit$lear - profit$naive_mix)
-cat("\nLEAR vs naive day:\n"); print(round(t_day, 3))
-cat("\nLEAR vs naive mix:\n"); print(round(t_mix, 3))
+comparisons <- list(c("bmt", "lear"), c("bmt", "naive_day"), c("bmt", "naive_mix"),
+                    c("lear", "naive_day"), c("lear", "naive_mix"), c("naive_mix", "naive_day"))
+tests <- bind_rows(lapply(comparisons, \(ab) {
+  r <- nw_test(profit[[ab[1]]] - profit[[ab[2]]])
+  tibble(model_a = ab[1], model_b = ab[2], mean_eur_per_day = r[["mean_eur_per_day"]],
+         t = r[["t"]], p_value = r[["p_value"]])
+}))
+print(tests)
 
 
 # cumulative profit
@@ -142,11 +149,7 @@ print(p)
 dir.create("results", showWarnings = FALSE)
 write_csv(mutate(profit, across(-date, \(x) round(x, 2))), "results/battery_daily.csv")
 write_csv(summary_tbl, "results/battery_summary.csv")
-write_csv(tibble(comparison       = c("lear_vs_naive_day", "lear_vs_naive_mix"),
-                 mean_eur_per_day = c(t_day[["mean_eur_per_day"]], t_mix[["mean_eur_per_day"]]),
-                 t                = c(t_day[["t"]], t_mix[["t"]]),
-                 p_value          = c(t_day[["p_value"]], t_mix[["p_value"]])),
-          "results/battery_tests.csv")
+write_csv(tests, "results/battery_tests.csv")
 write_csv(tibble(name  = c("cap_mwh", "power_mw", "eff_rt", "max_cycle"),
                  value = c(cap_mwh, power_mw, eff_rt, max_cycle)),
           "results/battery_setup.csv")

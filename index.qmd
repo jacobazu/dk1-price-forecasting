@@ -53,19 +53,13 @@ scored <- fc |>
 
 eur  <- function(x) format(round(x, 1), nsmall = 1)
 
-# difference tomorrow vs today for the first tile
-diff_today <- mean(tomorrow$lear) - mean(today_act$actual)
-diff_html  <- if (is.na(diff_today)) "" else
-  sprintf('<span class="%s">%s%s</span> vs today',
-          if (diff_today > 0) "kpi-up" else "kpi-down",
-          if (diff_today > 0) "+" else "\u2212", eur(abs(diff_today)))
 hour_label <- function(h) sprintf("%02d:00", h)
-
-# numbers for the tiles
-cheap <- tomorrow |> slice_min(lear, n = 1, with_ties = FALSE)
-peak  <- tomorrow |> slice_max(lear, n = 1, with_ties = FALSE)
 has_scores <- nrow(scored) > 0
-mae <- function(col) if (has_scores) eur(mean(abs(scored$actual - scored[[col]]))) else "\u2013"
+mae <- function(col) {
+  if (!has_scores || !col %in% names(scored)) return("\u2013")
+  s <- scored[!is.na(scored[[col]]), ]
+  if (nrow(s) == 0) "\u2013" else eur(mean(abs(s$actual - s[[col]])))
+}
 
 # Models: a button appears automatically for every model column in forecasts_live.csv.
 # To add a model later, add its column name, label and colour here.
@@ -127,58 +121,142 @@ chart_layout <- function(p, models = NULL, xtitle = "") {
   p
 }
 
-# battery backtest, made by scripts/09_battery.R
-has_battery <- file.exists("results/battery_summary.csv")
-if (has_battery) {
-  bat_daily <- read_csv("results/battery_daily.csv", show_col_types = FALSE)
-  bat_sum   <- read_csv("results/battery_summary.csv", show_col_types = FALSE)
-  bat_tests <- read_csv("results/battery_tests.csv", show_col_types = FALSE)
-  bat_setup <- read_csv("results/battery_setup.csv", show_col_types = FALSE)
-}
-strat_labels <- c(perfect = "Perfect foresight", lear = "LEAR",
-                  naive_mix = "Naive mix", naive_day = "Naive same hour yesterday")
-strat_colors <- c(perfect = "#9ca3af", lear = orange, naive_mix = "#0ea5e9", naive_day = grey)
+# results from the backtest scripts (results/*.csv), nothing on the dashboard is typed in by hand
+read_res <- function(f) if (file.exists(f)) read_csv(f, show_col_types = FALSE) else NULL
+eval_acc   <- read_res("results/eval_accuracy.csv")    # 08_evaluate.R
+eval_tests <- read_res("results/eval_tests.csv")
+eval_bias  <- read_res("results/eval_bias.csv")
+eval_shape <- read_res("results/eval_shape.csv")
+bmt_sel    <- read_res("results/bmt_selection.csv")    # 06_bmt.R
+bat_daily  <- read_res("results/battery_daily.csv")    # 09_battery.R
+bat_sum    <- read_res("results/battery_summary.csv")
+bat_tests  <- read_res("results/battery_tests.csv")
+bat_setup  <- read_res("results/battery_setup.csv")
+has_eval    <- !is.null(eval_acc)
+has_battery <- !is.null(bat_sum)
 
-bat_val  <- function(strategy, col) bat_sum[[col]][bat_sum$strategy == strategy]
-bat_set  <- function(name) bat_setup$value[bat_setup$name == name]
+long_labels <- c(perfect = "Perfect foresight", bmt = "BMT", lear = "LEAR",
+                 naive_day = "Naive: same hour yesterday", naive_mix = "Naive: weekly mix")
+text_labels <- c(perfect = "perfect foresight", bmt = "BMT", lear = "LEAR",
+                 naive_day = "same hour yesterday", naive_mix = "the weekly mix")
+strat_colors <- c(perfect = "#9ca3af", bmt = "#2563eb", lear = orange,
+                  naive_mix = "#0ea5e9", naive_day = grey)
+
 pct      <- function(x) paste0(format(round(100 * x, 1), nsmall = 1), "%")
 eur_sign <- function(x) paste0(if (x >= 0) "+" else "\u2212", prettyNum(abs(round(x)), big.mark = ","))
 p_txt    <- function(p) if (p < 0.001) "p < 0.001" else paste("p =", format(round(p, 3), nsmall = 3))
+p_tab    <- function(p) ifelse(p < 0.001, "<0.001", format(round(p, 3), nsmall = 3))
 
-bat_share <- if (has_battery) pct(bat_val("lear", "share_of_perfect")) else "\u2013"
-bat_extra <- if (has_battery) eur_sign(bat_val("lear", "eur_per_mw_year") - bat_val("naive_day", "eur_per_mw_year")) else "\u2013"
-bat_p     <- if (has_battery) p_txt(bat_tests$p_value[bat_tests$comparison == "lear_vs_naive_day"]) else "\u2013"
-bat_days  <- if (has_battery) nrow(bat_daily) else 0
-# battery text that follows the results, so it stays right if a rerun changes them
-bat_vs <- function(comparison, name) {
-  r <- bat_tests[bat_tests$comparison == comparison, ]
-  if (r$p_value < 0.05) {
-    sprintf("earns significantly %s than %s (%s)",
-            if (r$mean_eur_per_day > 0) "more" else "less", name, p_txt(r$p_value))
-  } else {
-    sprintf("is not significantly different from %s (%s)", name, p_txt(r$p_value))
+# main model: lowest backtest mae among the real models that have a forecast for tomorrow
+real_models <- setdiff(models, "naive_day")
+avail <- real_models[sapply(real_models, \(m) !all(is.na(tomorrow[[m]])))]
+main  <- if (has_eval) {
+  ranked <- eval_acc$model[eval_acc$model %in% avail]
+  if (length(ranked) > 0) ranked[1] else avail[1]
+} else avail[1]
+main_label <- model_labels[[main]]
+
+# backtest tile: best model vs naive same hour yesterday
+best_bt    <- if (has_eval) eval_acc$model[!grepl("^naive", eval_acc$model)][1] else NA
+bt_improve <- if (has_eval) paste0("\u2212", round(100 * (1 - eval_acc$rmae[eval_acc$model == best_bt])), "%") else "\u2013"
+bt_label   <- if (has_eval) long_labels[[best_bt]] else ""
+
+# tests: find a row for two models in either order
+find_test <- function(tab, a, b) {
+  r <- tab[(tab$model_a == a & tab$model_b == b) | (tab$model_a == b & tab$model_b == a), ]
+  if (nrow(r) == 0) return(NULL)
+  if (r$model_a != a) {   # flip so the numbers are for a vs b
+    for (col in intersect(c("mae_diff", "mean_eur_per_day", "dm_stat", "dm_sq_stat", "t"), names(r))) r[[col]] <- -r[[col]]
+    if ("hours_a_better" %in% names(r)) r[c("hours_a_better", "hours_b_better")] <- r[c("hours_b_better", "hours_a_better")]
   }
+  r
 }
-bat_test_txt <- if (has_battery) paste0("LEAR ", bat_vs("lear_vs_naive_day", "same hour yesterday"),
-                                        " and ", bat_vs("lear_vs_naive_mix", "the weekly mix"),
-                                        ", t-test on daily profit with Newey-West errors.") else ""
-bat_shape_txt <- if (has_battery) {
-  mix_earns_more <- bat_val("naive_mix", "total_eur") > bat_val("naive_day", "total_eur")
-  mix_mae_worse  <- bat_val("naive_mix", "mae") > bat_val("naive_day", "mae")
-  if (mix_earns_more && mix_mae_worse) {
-    "The weekly mix earns more than 'same hour yesterday' even though its MAE is worse: a battery only needs the shape of the day, not the level."
-  } else if (!mix_earns_more && !mix_mae_worse) {
-    "'Same hour yesterday' earns more than the weekly mix even though its MAE is worse: a battery only needs the shape of the day, not the level."
-  } else if (mix_earns_more) {
-    "The weekly mix has both the lower MAE and the higher profit of the two naive forecasts."
+
+# accuracy text
+acc_txt <- if (has_eval) {
+  naive_best <- eval_acc$model[grepl("^naive", eval_acc$model)][1]
+  real <- eval_acc |> filter(!grepl("^naive", model))
+  imp  <- round(100 * (1 - real$mae / eval_acc$mae[eval_acc$model == naive_best]))
+  paste0(paste(sprintf("%s cuts the average error by %d%%", long_labels[real$model], imp), collapse = ", "),
+         " compared with the best naive benchmark (", long_labels[[naive_best]], ").")
+} else ""
+
+sig_txt <- if (has_eval && nrow(filter(eval_acc, !grepl("^naive", model))) >= 2) {
+  top <- eval_acc$model[!grepl("^naive", eval_acc$model)][1:2]
+  r   <- find_test(eval_tests, top[1], top[2])
+  if (r$dm_p < 0.05 && r$gw_p < 0.05) {
+    sprintf("%s is significantly more accurate than %s (DM %s, GW %s), better in %d and worse in %d of the 24 hours.",
+            long_labels[[top[1]]], long_labels[[top[2]]], p_txt(r$dm_p), p_txt(r$gw_p),
+            r$hours_a_better, r$hours_b_better)
   } else {
-    "'Same hour yesterday' has both the lower MAE and the higher profit of the two naive forecasts."
+    sprintf("%s has the lower MAE, but the difference to %s is not clearly significant (DM %s, GW %s).",
+            long_labels[[top[1]]], long_labels[[top[2]]], p_txt(r$dm_p), p_txt(r$gw_p))
   }
 } else ""
 
-bat_desc  <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip efficiency, max %g full cycle per day",
-                                      bat_set("cap_mwh"), bat_set("power_mw"),
-                                      100 * bat_set("eff_rt"), bat_set("max_cycle")) else ""
+bmt_avg_sel <- if (!is.null(bmt_sel)) format(round(sum(bmt_sel$share) / n_distinct(bmt_sel$target), 1), nsmall = 1) else "\u2013"
+bmt_n_cand  <- if (!is.null(bmt_sel)) n_distinct(bmt_sel$input) else "\u2013"
+eval_period <- if (has_eval) sprintf("%s to %s, %d days, %s hourly forecasts",
+                                     format(eval_acc$from[1], "%d %b %Y"), format(eval_acc$to[1], "%d %b %Y"),
+                                     eval_acc$n_days[1], prettyNum(eval_acc$n_hours[1], big.mark = ",")) else ""
+
+# battery
+bat_val <- function(strategy, col) bat_sum[[col]][bat_sum$strategy == strategy]
+bat_set <- function(name) bat_setup$value[bat_setup$name == name]
+bat_best <- if (has_battery) bat_sum$strategy[!bat_sum$strategy %in% c("perfect", "naive_day", "naive_mix")][1] else NA
+bat_best_label <- if (has_battery) long_labels[[bat_best]] else ""
+bat_share <- if (has_battery) pct(bat_val(bat_best, "share_of_perfect")) else "\u2013"
+bat_extra <- if (has_battery) eur_sign(bat_val(bat_best, "eur_per_mw_year") - bat_val("naive_day", "eur_per_mw_year")) else "\u2013"
+bat_p     <- if (has_battery) p_txt(find_test(bat_tests, bat_best, "naive_day")$p_value) else "\u2013"
+bat_days  <- if (has_battery) nrow(bat_daily) else 0
+
+# battery text that follows the results
+bat_cmp <- function(a, b) {
+  r <- find_test(bat_tests, a, b)
+  if (is.null(r)) return("")
+  if (r$p_value < 0.05) {
+    sprintf("%s earns significantly %s than %s (%s).", text_labels[[a]],
+            if (r$mean_eur_per_day > 0) "more" else "less", text_labels[[b]], p_txt(r$p_value))
+  } else {
+    sprintf("%s and %s are not significantly different in profit (%s).",
+            text_labels[[a]], text_labels[[b]], p_txt(r$p_value))
+  }
+}
+# money vs accuracy for two forecasts
+bat_rank <- function(a, b) {
+  more_acc   <- bat_val(a, "mae") < bat_val(b, "mae")
+  more_money <- bat_val(a, "total_eur") > bat_val(b, "total_eur")
+  la <- text_labels[[a]]; lb <- text_labels[[b]]
+  if (more_acc == more_money) {
+    w <- if (more_acc) la else lb
+    sprintf("%s is both more accurate and earns more.", w)
+  } else {
+    acc <- if (more_acc) la else lb
+    mon <- if (more_money) la else lb
+    sprintf("%s has the lower MAE, but %s earns more, since a battery only needs the shape of the day, not the level.", acc, mon)
+  }
+}
+bat_txt <- if (has_battery) {
+  real <- bat_sum$strategy[bat_sum$strategy %in% c("bmt", "lear")]
+  parts <- c(bat_cmp(bat_best, "naive_day"), bat_cmp(bat_best, "naive_mix"))
+  if (length(real) == 2) parts <- c(parts, bat_cmp(real[1], real[2]), bat_rank(real[1], real[2]))
+  parts <- c(parts, paste("Of the two naive forecasts,", bat_rank("naive_mix", "naive_day")))
+  parts <- parts[parts != ""]
+  paste(paste0(toupper(substring(parts, 1, 1)), substring(parts, 2)), collapse = " ")
+} else ""
+
+# forecast tiles, from the main model
+diff_today <- mean(tomorrow[[main]]) - mean(today_act$actual)
+diff_html  <- if (is.na(diff_today)) "" else
+  sprintf('<span class="%s">%s%s</span> vs today',
+          if (diff_today > 0) "kpi-up" else "kpi-down",
+          if (diff_today > 0) "+" else "\u2212", eur(abs(diff_today)))
+cheap <- tomorrow[which.min(tomorrow[[main]]), ]
+peak  <- tomorrow[which.max(tomorrow[[main]]), ]
+
+bat_desc <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip efficiency, max %g full cycle per day",
+                                     bat_set("cap_mwh"), bat_set("power_mw"),
+                                     100 * bat_set("eff_rt"), bat_set("max_cycle")) else ""
 ```
 
 # Forecast
@@ -188,8 +266,8 @@ bat_desc  <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip e
 ::: {.card}
 <div class="kpi" style="--accent: #f97316">
 <div>
-<div class="kpi-label">Average price tomorrow</div>
-<div class="kpi-value">`r eur(mean(tomorrow$lear))`<span class="kpi-unit">€/MWh</span></div>
+<div class="kpi-label">Average price tomorrow (`r main_label`)</div>
+<div class="kpi-value">`r eur(mean(tomorrow[[main]]))`<span class="kpi-unit">€/MWh</span></div>
 <div class="kpi-sub">`r diff_html`</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-lightning-charge-fill"></i></div>
@@ -201,7 +279,7 @@ bat_desc  <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip e
 <div>
 <div class="kpi-label">Cheapest hour</div>
 <div class="kpi-value">`r hour_label(cheap$hour)`</div>
-<div class="kpi-sub">`r eur(cheap$lear)` €/MWh</div>
+<div class="kpi-sub">`r eur(cheap[[main]])` €/MWh</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-arrow-down-circle-fill"></i></div>
 </div>
@@ -212,7 +290,7 @@ bat_desc  <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip e
 <div>
 <div class="kpi-label">Most expensive hour</div>
 <div class="kpi-value">`r hour_label(peak$hour)`</div>
-<div class="kpi-sub">`r eur(peak$lear)` €/MWh</div>
+<div class="kpi-sub">`r eur(peak[[main]])` €/MWh</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-arrow-up-circle-fill"></i></div>
 </div>
@@ -222,8 +300,8 @@ bat_desc  <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip e
 <div class="kpi" style="--accent: #c2410c">
 <div>
 <div class="kpi-label">Backtest accuracy</div>
-<div class="kpi-value">−26%</div>
-<div class="kpi-sub">error vs naive (MAE)</div>
+<div class="kpi-value">`r bt_improve`</div>
+<div class="kpi-sub">`r bt_label` error vs naive (MAE)</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-bullseye"></i></div>
 </div>
@@ -241,6 +319,7 @@ p <- plot_ly() |>
 
 # Naive is left out here: its forecast for tomorrow is simply today's prices (the dotted line)
 fc_models <- setdiff(models, "naive_day")
+fc_models <- c(main, setdiff(fc_models, main))   # chart opens on the same model as the tiles
 
 for (m in fc_models) {
   p <- p |>
@@ -272,8 +351,8 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)") |> layout(xaxis = li
 ::: {.card}
 <div class="kpi" style="--accent: #16a34a">
 <div>
-<div class="kpi-label">LEAR error (MAE)</div>
-<div class="kpi-value">`r mae("lear")`</div>
+<div class="kpi-label">`r main_label` error (MAE)</div>
+<div class="kpi-value">`r mae(main)`</div>
 <div class="kpi-sub">€/MWh, last 30 days</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-graph-up-arrow"></i></div>
@@ -342,7 +421,7 @@ if (nrow(scored) > 0) {
 ::: {.card}
 <div class="kpi" style="--accent: #f97316">
 <div>
-<div class="kpi-label">LEAR share of max profit</div>
+<div class="kpi-label">`r bat_best_label` share of max profit</div>
 <div class="kpi-value">`r bat_share`</div>
 <div class="kpi-sub">perfect foresight = 100%</div>
 </div>
@@ -366,7 +445,7 @@ if (nrow(scored) > 0) {
 <div>
 <div class="kpi-label">Significance</div>
 <div class="kpi-value">`r bat_p`</div>
-<div class="kpi-sub">LEAR vs naive, daily profit</div>
+<div class="kpi-sub">`r bat_best_label` vs naive, daily profit</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-check2-circle"></i></div>
 </div>
@@ -380,12 +459,12 @@ if (!has_battery) {
   cat("Run scripts/09_battery.R to add the battery backtest.")
 } else {
   p3 <- plot_ly(bat_daily, x = ~date)
-  for (s in names(strat_labels)) {
+  for (s in intersect(names(long_labels), names(bat_daily))) {
     p3 <- p3 |>
-      add_lines(y = cumsum(bat_daily[[s]]), name = strat_labels[[s]],
-                line = list(color = strat_colors[[s]], width = if (s == "lear") 3 else 2,
+      add_lines(y = cumsum(bat_daily[[s]]), name = long_labels[[s]],
+                line = list(color = strat_colors[[s]], width = if (s %in% c("bmt", "lear")) 3 else 2,
                             dash = if (s == "perfect") "dot" else "solid"),
-                hovertemplate = paste0("%{y:,.0f} €<extra>", strat_labels[[s]], "</extra>"))
+                hovertemplate = paste0("%{y:,.0f} €<extra>", long_labels[[s]], "</extra>"))
   }
   p3 |> chart_layout()
 }
@@ -397,10 +476,11 @@ if (!has_battery) {
 #| title: "Profit by strategy"
 if (has_battery) {
   bat_sum |>
-    transmute(Strategy              = unname(strat_labels[strategy]),
+    transmute(Strategy              = unname(long_labels[strategy]),
               `EUR per MW per year` = prettyNum(eur_per_mw_year, big.mark = ","),
-              `Share of perfect`    = pct(share_of_perfect)) |>
-    knitr::kable(align = "lrr")
+              `Share of perfect`    = pct(share_of_perfect),
+              `MAE (€/MWh)`         = ifelse(strategy == "perfect", "", format(round(mae, 1), nsmall = 1))) |>
+    knitr::kable(align = "lrrr")
 }
 ```
 
@@ -410,7 +490,7 @@ Each day a `r bat_desc` plans its charging and selling for tomorrow using the fo
 and is then paid the actual prices. Backtest over `r bat_days` days. Perfect foresight
 plans with the actual prices and is the upper bound.
 
-`r bat_test_txt` `r bat_shape_txt`
+`r bat_txt`
 
 No fees, no battery wear, hourly instead of 15-minute trading.
 
@@ -418,36 +498,79 @@ No fees, no battery wear, hourly instead of 15-minute trading.
 
 # Method
 
-## Row
+## Row {height=44%}
 
-::: {.card title="Backtest: October 2025 – October 2026"}
+```{r}
+#| title: "Backtest accuracy"
+if (has_eval) {
+  eval_acc |>
+    transmute(Model          = unname(long_labels[model]),
+              `MAE (€/MWh)`  = round(mae, 1),
+              `RMSE (€/MWh)` = round(rmse, 1),
+              `rMAE (vs same hour yesterday)` = round(rmae, 3)) |>
+    knitr::kable(align = "lrrr")
+}
+```
 
-Rolling out-of-sample forecasts for every day of the test year (≈ 8,800 hourly forecasts).
+::: {.card title="Is the difference significant?"}
 
-| Model | MAE (€/MWh) | RMSE (€/MWh) |
-|---|---|---|
-| **BMT** | **21.7** | **34.4** |
-| LEAR | 22.7 | 35.8 |
-| Naive: same hour yesterday | 30.8 | 46.8 |
-| Naive: weekly mix | 34.2 | 51.4 |
+Rolling out-of-sample forecasts, `r eval_period`, all models on the same hours.
 
-BMT and LEAR cut the average error by about 30% and 26% compared with the best naive benchmark.
+`r acc_txt` `r sig_txt`
+
+```{r}
+if (has_eval) {
+  eval_tests |>
+    transmute(Comparison    = paste(long_labels[model_a], "vs", long_labels[model_b]),
+              `MAE diff`    = round(mae_diff, 2),
+              `DM p`        = p_tab(dm_p),
+              `GW p`        = p_tab(gw_p),
+              `Hours better / worse` = paste(hours_a_better, "/", hours_b_better)) |>
+    knitr::kable(align = "lrrrr")
+}
+```
 
 :::
 
+## Row {height=56%}
+
+```{r}
+#| title: "Bias and shape of the day"
+if (has_eval) {
+  eval_bias |>
+    inner_join(eval_shape, by = "model") |>
+    transmute(Model                 = unname(long_labels[model]),
+              `Mean error`          = round(mean_error, 1),
+              `MZ slope`            = round(mz_slope, 2),
+              `MZ p`                = p_tab(mz_p),
+              `Cheapest hour ±1h`   = pct(cheapest_pm1),
+              `Peak hour ±1h`       = pct(peak_pm1),
+              `Rank correlation`    = round(spearman, 2)) |>
+    knitr::kable(align = "lrrrrrr")
+}
+```
+
 ::: {.card title="How it works"}
 
-**LEAR** inspired by Lago (2021): one LASSO
-regression per hour, 24 regressions in total, each using all 24 prices from days D-1, D-2, D-3
-and D-7 plus weekday dummies. Each forecast is estimated on the previous two years, with lambda
-chosen by BIC. Prices are transformed with asinh((p − median) / MAD) to handle spikes and
-negative prices.
+**LEAR** inspired by Lago (2021): one LASSO regression per hour, 24 regressions in total, each
+using all 24 prices from days D-1, D-2, D-3 and D-7 plus weekday dummies. Each forecast is
+estimated on the previous two years, with lambda chosen by BIC. Prices are transformed with
+asinh((p − median) / MAD) to handle spikes and negative prices.
 
 **BMT**, boosting with multiple testing (Kapetanios, Sarafidis & Ventouri), the method from my
 master's thesis: same inputs and transformation, but the prices are added one at a time. Each step
 adds the most significant price conditional on the ones already in, until none passes a
-multiple-testing threshold, then OLS on the selected prices. It picks about 4 of the 96 lagged
-prices per hour.
+multiple-testing threshold, then OLS on the selected prices. On average it picks `r bmt_avg_sel`
+of the `r bmt_n_cand` lagged prices per hour.
+
+**Tests:** DM = Diebold-Mariano on the daily average absolute error (Harvey-Leybourne-Newbold
+correction), GW = Giacomini-White conditional test. Hours = how many of the 24 hours the model is
+significantly better / worse (Holm corrected).
+
+**Bias table:** mean error above 0 means the forecast is too low on average. Mincer-Zarnowitz
+regresses the actual price on the forecast; a slope above 1 means the forecast moves too little,
+and MZ p tests intercept 0 and slope 1 together (Newey-West errors). Cheapest / peak hour ±1h is the
+share of days where the forecast finds that hour within one hour.
 
 **Live track record:** every morning before the noon auction, the forecast for the next day is
 saved and never changed afterwards.

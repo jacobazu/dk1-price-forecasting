@@ -1,5 +1,6 @@
 strategy,total_eur,eur_per_mw_year,share_of_perfect,mae
 perfect,81235,79280,1,0
 lear,73354,71589,0.903,22.74
+bmt,73007,71250,0.899,21.68
 naive_mix,71554,69832,0.881,34.2
 naive_day,70498,68802,0.868,30.82

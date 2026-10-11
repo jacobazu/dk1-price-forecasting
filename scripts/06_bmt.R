@@ -80,3 +80,10 @@ as_tibble(sel_share, rownames = "target") |>
 
 saveRDS(results_long, "data/processed/forecasts_bmt.rds")
 saveRDS(sel_share, "data/processed/bmt_selection.rds")
+
+# small summary for the dashboard: share of test days each lagged price is selected, per hour
+dir.create("results", showWarnings = FALSE)
+readr::write_csv(as_tibble(sel_share, rownames = "target") |>
+                   pivot_longer(-target, names_to = "input", values_to = "share") |>
+                   mutate(share = round(share, 4)),
+                 "results/bmt_selection.csv")
