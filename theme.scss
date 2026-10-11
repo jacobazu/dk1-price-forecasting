@@ -1,7 +1,7 @@
 /*-- scss:defaults --*/
 
 // light theme with orange
-$font-family-sans-serif: "Plus Jakarta Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+$font-family-sans-serif: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 
 $body-bg:      #faf6f1;
 $body-color:   #1f2328;
@@ -36,7 +36,7 @@ body,
   background: #ffffff !important;
   border-bottom: 1px solid #efe6dc;
 }
-.navbar .navbar-title { font-weight: 700; color: #1f2328 !important; }
+.navbar .navbar-title { font-weight: 600; color: #1f2328 !important; }
 .navbar .nav-link { color: #6b7280 !important; font-weight: 500; }
 .navbar .nav-link.active,
 .navbar .nav-link:hover { color: #1f2328 !important; }
@@ -55,7 +55,7 @@ body,
   background: transparent;
   border-bottom: none;
   color: #1f2328;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 1rem;
   padding-top: 1rem;
 }
@@ -86,7 +86,7 @@ body,
 }
 .kpi-value {
   font-size: 1.6rem;
-  font-weight: 700;
+  font-weight: 600;
   color: #1f2328;
   line-height: 1.25;
   white-space: nowrap;
@@ -157,6 +157,10 @@ body,
 .combo-stats small { font-size: 0.8rem; color: #6b7280; }
 .tag { display: inline-block; padding: 2px 10px; border-radius: 999px; background: #f3f4f6; font-weight: 600; font-size: 0.85rem; }
 .tag.good { background: #dcfce7; color: #166534; }
+
+// aligned numbers
+.kpi-value, .kpi-sub, .combo-stats b,
+.quarto-dashboard table td { font-variant-numeric: tabular-nums; }
 
 // links
 a { text-decoration: none; }
