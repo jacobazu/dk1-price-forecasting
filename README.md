@@ -7,13 +7,11 @@ Every morning before the noon auction, this repo forecasts the 24 hourly day-ahe
 real prices are known. It all runs on GitHub Actions, and the dashboard is rebuilt from the results
 every day.
 
-I started it after my master's in mathematics-economics at Aalborg University, to work with real data
-in a live setting instead of a fixed dataset.
 
 ## Models
 
 - **BMT-X**: boosting with multiple testing (Kapetanios, Sarafidis & Ventouri), the variable selection
-  method from my thesis. It adds one variable at a time as long as it passes a multiple-testing
+  method I evaluated in my thesis. It adds one variable at a time as long as it passes a multiple-testing
   threshold, then fits OLS. One model per hour.
 - **LEAR-X**: one lasso per hour, lambda chosen by BIC, after Lago et al. (2021).
 - **XGBoost-X**: gradient boosted trees, one model for all 24 hours.
