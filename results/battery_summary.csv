@@ -1,7 +1,7 @@
 strategy,total_eur,eur_per_mw_year,share_of_perfect,mae
 perfect,80918,78760,1,0
-ensemble,75945,73920,0.939,19.02
+ensemble,75678,73660,0.935,19.03
 learx,75519,73505,0.933,20.32
-xgbx,74225,72246,0.917,20.58
+xgbx,74812,72817,0.925,20.54
 bmtx,73656,71692,0.91,20.38
 naive_mix,71343,69441,0.882,34.17

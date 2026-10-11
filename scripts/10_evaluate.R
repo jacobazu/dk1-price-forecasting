@@ -26,9 +26,10 @@ actual <- tibble(date = rep(daily$date, each = 24), hour = rep(0:23, times = nro
 
 # rebuild backtest forecasts
 bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "bmtx", "xgb", "weather"), ".rds")
+wide <- function(x) x |> select(date, hour, model, forecast) |>
+  pivot_wider(names_from = model, values_from = forecast)
+complete_days <- function(x) x |> drop_na() |> group_by(date) |> filter(n() == 24) |> ungroup()
 if (all(file.exists(bt_files))) {
-  wide <- function(x) x |> select(date, hour, model, forecast) |>
-    pivot_wider(names_from = model, values_from = forecast)
   backtest <- readRDS(bt_files[1]) |>
     select(date, hour, actual, lear, naive_mix) |>
     inner_join(select(readRDS(bt_files[2]), date, hour, bmt), by = c("date", "hour")) |>
@@ -37,10 +38,16 @@ if (all(file.exists(bt_files))) {
     # plain xgboost
     inner_join(wide(filter(readRDS(bt_files[4]), model == "xgb")), by = c("date", "hour")) |>
     inner_join(transmute(actual, date = date + 1, hour, naive_day = actual), by = c("date", "hour")) |>
-    drop_na() |>
-    group_by(date) |>
-    filter(n() == 24) |>
-    ungroup() |>
+    complete_days() |>
+    select(date, hour, actual, all_of(stored)) |>
+    arrange(date, hour)
+  write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
+} else if (file.exists(bt_files[5])) {
+  # only 09b rerun: swap in the new -x models
+  backtest <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |>
+    select(-any_of(c("bmtx", "learx", "xgbx"))) |>
+    inner_join(wide(readRDS(bt_files[5])), by = c("date", "hour")) |>
+    complete_days() |>
     select(date, hour, actual, all_of(stored)) |>
     arrange(date, hour)
   write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
@@ -283,7 +290,7 @@ prob <- q_day |>
          }),
          calibrated = cov50_p >= 0.05 & cov90_p >= 0.05,
          chosen = if (any(calibrated)) method == method[calibrated][which.min(pinball[calibrated])]
-                  else method == method[which.min(cal_error)]) |>
+         else method == method[which.min(cal_error)]) |>
   ungroup()
 print(prob)
 write_csv(prob,  "results/prob_scores.csv")
