@@ -1,38 +1,36 @@
-# economic evaluation of the forecasts with a battery
-# each day the battery plans tomorrow using the forecast, buy cheap and sell expensive
-# the plan is then paid with the actual prices
-# perfect foresight = knowing the actual prices, used as upper bound
-# needs forecasts_lear.rds from 04_lear.R
+# economic evaluation with a battery
+# battery plans each day with the forecast and gets paid the actual prices
+# perfect = plan with actual prices, best possible
 
 library(dplyr)
 library(tidyr)
 library(lubridate)
-library(lpSolve)     # install.packages("lpSolve") first time
+library(lpSolve)
+library(readr)
 library(ggplot2)
 
 # battery
-cap_mwh   <- 2       # storage, MWh
-power_mw  <- 1       # max charge/discharge per hour, MW
-eff_rt    <- 0.90    # round trip efficiency
-max_cycle <- 1       # full cycles per day
-eff       <- sqrt(eff_rt)   # loss split on charge and discharge
+cap_mwh   <- 2       # MWh
+power_mw  <- 1       # MW
+eff_rt    <- 0.90    # round trip
+max_cycle <- 1       # cycles per day
+eff       <- sqrt(eff_rt)
 
-# lear forecasts from the backtest, danish time
+# lear backtest forecasts
 fc <- readRDS("data/processed/forecasts_lear.rds")
 
-# naive forecast, same hour yesterday
+# naive, same hour yesterday
 fc <- fc |>
   left_join(fc |> transmute(date = date + 1, hour, naive_day = actual),
             by = c("date", "hour")) |>
   filter(!is.na(naive_day)) |>
   group_by(date) |>
-  filter(n() == 24) |>          # only full days
+  filter(n() == 24) |>
   ungroup() |>
   arrange(date, hour)
 
 
-# linear program for one day. constraints are the same every day, only prices change
-# variables: charge c1..c24, discharge d1..d24, state of charge s1..s24
+# lp for one day: charge c1..c24, discharge d1..d24, state of charge s1..s24
 n  <- 24
 ic <- 1:n
 id <- n + 1:n
@@ -41,7 +39,7 @@ soc <- 2 * n + 1:n
 A <- matrix(0, 0, 3 * n); dirs <- c(); rhs <- c()
 new_row <- function() numeric(3 * n)
 
-# state of charge s_h = s_(h-1) + eff*c_h - d_h/eff, starts empty
+# s_h = s_(h-1) + eff*c_h - d_h/eff, starts empty
 for (h in 1:n) {
   r <- new_row()
   r[soc[h]] <- 1
@@ -55,7 +53,7 @@ for (h in 1:n) {
 r <- new_row(); r[soc[n]] <- 1
 A <- rbind(A, r); dirs <- c(dirs, "="); rhs <- c(rhs, 0)
 
-# storage and power limits
+# limits
 for (h in 1:n) {
   r <- new_row(); r[soc[h]] <- 1
   A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, cap_mwh)
@@ -65,13 +63,13 @@ for (h in 1:n) {
   A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, power_mw)
 }
 
-# cycle limit
+# cycles
 r <- new_row(); r[id] <- 1
 A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, cap_mwh * max_cycle)
 
-# optimal plan for given prices, returns MWh sold per hour (negative = bought)
+# best plan for given prices, MWh sold per hour (negative = bought)
 schedule <- function(price) {
-  obj <- c(-price, price, rep(0, n))   # pay for charging, earn from selling
+  obj <- c(-price, price, rep(0, n))
   sol <- lp("max", obj, A, dirs, rhs)
   if (sol$status != 0) stop("lp did not solve")
   sol$solution[id] - sol$solution[ic]
@@ -104,8 +102,7 @@ summary_tbl <- profit |>
 print(summary_tbl)
 
 
-# test if lear earns significantly more, using daily profit differences
-# newey west standard errors because of autocorrelation (like a dm test with profit as loss)
+# does lear earn significantly more? t test on daily profit differences, newey west se
 nw_test <- function(d, lag = 7) {
   n <- length(d)
   e <- d - mean(d)
@@ -115,11 +112,13 @@ nw_test <- function(d, lag = 7) {
   c(mean_eur_per_day = mean(d), t = t, p_value = 2 * pnorm(-abs(t)))
 }
 
-cat("\nLEAR vs naive day:\n"); print(round(nw_test(profit$lear - profit$naive_day), 3))
-cat("\nLEAR vs naive mix:\n"); print(round(nw_test(profit$lear - profit$naive_mix), 3))
+t_day <- nw_test(profit$lear - profit$naive_day)
+t_mix <- nw_test(profit$lear - profit$naive_mix)
+cat("\nLEAR vs naive day:\n"); print(round(t_day, 3))
+cat("\nLEAR vs naive mix:\n"); print(round(t_mix, 3))
 
 
-# cumulative profit plot
+# cumulative profit
 p <- profit |>
   pivot_longer(-date, names_to = "strategy", values_to = "profit") |>
   group_by(strategy) |>
@@ -133,8 +132,15 @@ p <- profit |>
   theme_minimal()
 print(p)
 
-# save results for the dashboard
-saveRDS(list(profit = profit, summary = summary_tbl,
-             battery = c(cap_mwh = cap_mwh, power_mw = power_mw,
-                         eff_rt = eff_rt, max_cycle = max_cycle)),
-        "data/processed/battery_results.rds")
+# results for the dashboard, small files so they go on github
+dir.create("results", showWarnings = FALSE)
+write_csv(mutate(profit, across(-date, \(x) round(x, 2))), "results/battery_daily.csv")
+write_csv(summary_tbl, "results/battery_summary.csv")
+write_csv(tibble(comparison       = c("lear_vs_naive_day", "lear_vs_naive_mix"),
+                 mean_eur_per_day = c(t_day[["mean_eur_per_day"]], t_mix[["mean_eur_per_day"]]),
+                 t                = c(t_day[["t"]], t_mix[["t"]]),
+                 p_value          = c(t_day[["p_value"]], t_mix[["p_value"]])),
+          "results/battery_tests.csv")
+write_csv(tibble(name  = c("cap_mwh", "power_mw", "eff_rt", "max_cycle"),
+                 value = c(cap_mwh, power_mw, eff_rt, max_cycle)),
+          "results/battery_setup.csv")

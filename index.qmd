@@ -58,14 +58,14 @@ diff_today <- mean(tomorrow$lear) - mean(today_act$actual)
 diff_html  <- if (is.na(diff_today)) "" else
   sprintf('<span class="%s">%s%s</span> vs today',
           if (diff_today > 0) "kpi-up" else "kpi-down",
-          if (diff_today > 0) "+" else "−", eur(abs(diff_today)))
+          if (diff_today > 0) "+" else "\u2212", eur(abs(diff_today)))
 hour_label <- function(h) sprintf("%02d:00", h)
 
 # numbers for the tiles
 cheap <- tomorrow |> slice_min(lear, n = 1, with_ties = FALSE)
 peak  <- tomorrow |> slice_max(lear, n = 1, with_ties = FALSE)
 has_scores <- nrow(scored) > 0
-mae <- function(col) if (has_scores) eur(mean(abs(scored$actual - scored[[col]]))) else "–"
+mae <- function(col) if (has_scores) eur(mean(abs(scored$actual - scored[[col]]))) else "\u2013"
 
 # Models: a button appears automatically for every model column in forecasts_live.csv.
 # To add a model later, add its column name, label and colour here.
@@ -106,8 +106,8 @@ model_buttons <- function(p, models) {
     data = list(labels = c(unname(model_labels[models]), "All"), visible = vis))
 }
 
-chart_layout <- function(p, models, xtitle = "") {
-  p |>
+chart_layout <- function(p, models = NULL, xtitle = "") {
+  p <- p |>
     layout(paper_bgcolor = "rgba(0,0,0,0)",
            plot_bgcolor  = "rgba(0,0,0,0)",
            font = list(family = "Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
@@ -120,9 +120,37 @@ chart_layout <- function(p, models, xtitle = "") {
            hoverlabel = list(bgcolor = "#ffffff", bordercolor = "#efe6dc",
                              font = list(color = ink)),
            margin = list(t = 50)) |>
-    config(displayModeBar = FALSE) |>
-    model_buttons(models)
+    config(displayModeBar = FALSE)
+  if (length(models) > 0) p <- model_buttons(p, models)
+  p
 }
+
+# battery backtest, made by scripts/09_battery.R
+has_battery <- file.exists("results/battery_summary.csv")
+if (has_battery) {
+  bat_daily <- read_csv("results/battery_daily.csv", show_col_types = FALSE)
+  bat_sum   <- read_csv("results/battery_summary.csv", show_col_types = FALSE)
+  bat_tests <- read_csv("results/battery_tests.csv", show_col_types = FALSE)
+  bat_setup <- read_csv("results/battery_setup.csv", show_col_types = FALSE)
+}
+strat_labels <- c(perfect = "Perfect foresight", lear = "LEAR",
+                  naive_mix = "Naive mix", naive_day = "Naive same hour yesterday")
+strat_colors <- c(perfect = "#9ca3af", lear = orange, naive_mix = "#0ea5e9", naive_day = grey)
+
+bat_val  <- function(strategy, col) bat_sum[[col]][bat_sum$strategy == strategy]
+bat_set  <- function(name) bat_setup$value[bat_setup$name == name]
+pct      <- function(x) paste0(format(round(100 * x, 1), nsmall = 1), "%")
+eur_sign <- function(x) paste0(if (x >= 0) "+" else "\u2212", prettyNum(abs(round(x)), big.mark = ","))
+p_txt    <- function(p) if (p < 0.001) "p < 0.001" else paste("p =", format(round(p, 3), nsmall = 3))
+
+bat_share <- if (has_battery) pct(bat_val("lear", "share_of_perfect")) else "\u2013"
+bat_extra <- if (has_battery) eur_sign(bat_val("lear", "eur_per_mw_year") - bat_val("naive_day", "eur_per_mw_year")) else "\u2013"
+bat_p     <- if (has_battery) p_txt(bat_tests$p_value[bat_tests$comparison == "lear_vs_naive_day"]) else "\u2013"
+bat_p_mix <- if (has_battery) p_txt(bat_tests$p_value[bat_tests$comparison == "lear_vs_naive_mix"]) else "\u2013"
+bat_days  <- if (has_battery) nrow(bat_daily) else 0
+bat_desc  <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip efficiency, max %g full cycle per day",
+                                      bat_set("cap_mwh"), bat_set("power_mw"),
+                                      100 * bat_set("eff_rt"), bat_set("max_cycle")) else ""
 ```
 
 # Forecast
@@ -278,6 +306,90 @@ if (nrow(scored) > 0) {
     knitr::kable(digits = 1)
 }
 ```
+
+# Battery value
+
+## Row {height=14%}
+
+::: {.card}
+<div class="kpi" style="--accent: #f97316">
+<div>
+<div class="kpi-label">LEAR share of max profit</div>
+<div class="kpi-value">`r bat_share`</div>
+<div class="kpi-sub">perfect foresight = 100%</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-battery-charging"></i></div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #16a34a">
+<div>
+<div class="kpi-label">Extra profit vs naive</div>
+<div class="kpi-value">`r bat_extra`<span class="kpi-unit">€</span></div>
+<div class="kpi-sub">per MW per year</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-cash-coin"></i></div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #6b7280">
+<div>
+<div class="kpi-label">Significance</div>
+<div class="kpi-value">`r bat_p`</div>
+<div class="kpi-sub">LEAR vs naive, daily profit</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-check2-circle"></i></div>
+</div>
+:::
+
+## Row {height=48%}
+
+```{r}
+#| title: "Cumulative battery profit when planning with each forecast (EUR)"
+if (!has_battery) {
+  cat("Run scripts/09_battery.R to add the battery backtest.")
+} else {
+  p3 <- plot_ly(bat_daily, x = ~date)
+  for (s in names(strat_labels)) {
+    p3 <- p3 |>
+      add_lines(y = cumsum(bat_daily[[s]]), name = strat_labels[[s]],
+                line = list(color = strat_colors[[s]], width = if (s == "lear") 3 else 2,
+                            dash = if (s == "perfect") "dot" else "solid"),
+                hovertemplate = paste0("%{y:,.0f} €<extra>", strat_labels[[s]], "</extra>"))
+  }
+  p3 |> chart_layout()
+}
+```
+
+## Row {height=38%}
+
+```{r}
+#| title: "Profit by strategy"
+if (has_battery) {
+  bat_sum |>
+    transmute(Strategy              = unname(strat_labels[strategy]),
+              `EUR per MW per year` = prettyNum(eur_per_mw_year, big.mark = ","),
+              `Share of perfect`    = pct(share_of_perfect)) |>
+    knitr::kable(align = "lrr")
+}
+```
+
+::: {.card title="How it works"}
+
+Each day a `r bat_desc` plans its charging and selling for tomorrow using the forecast,
+and is then paid the actual prices. Backtest over `r bat_days` days. Perfect foresight
+plans with the actual prices and is the upper bound.
+
+LEAR earns significantly more than both naive forecasts (`r bat_p` vs same hour yesterday,
+`r bat_p_mix` vs weekly mix, t-test on daily profit with Newey-West errors). The weekly mix
+earns more than "same hour yesterday" even though its MAE is worse: a battery only needs the
+shape of the day, not the level.
+
+No fees, no battery wear, hourly instead of 15-minute trading.
+
+:::
 
 # Method
 
