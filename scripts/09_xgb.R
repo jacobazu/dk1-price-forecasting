@@ -5,10 +5,10 @@ library(dplyr)
 library(tidyr)
 library(lubridate)
 library(readr)
-library(parallel)
 source("R/lear.R")
 source("R/exog.R")
 source("R/xgb.R")
+source("R/parallel.R")
 
 prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
 daily    <- build_daily(prices)
@@ -21,7 +21,6 @@ exog <- make_exog(daily$date,
                   readRDS("data/processed/holidays_dk.rds"))
 
 window <- 730
-cores  <- max(1, detectCores() - 1)
 # no energinet wind/solar
 variants <- list(xgb = NULL, xgbx = exog[c("nb", "hol")])
 
@@ -35,7 +34,7 @@ val_days <- val_days[seq(1, length(val_days), by = 3)]
 
 grid <- expand.grid(model = names(variants), depth = depths, stringsAsFactors = FALSE)
 t0 <- Sys.time()
-tuning <- bind_rows(mclapply(seq_len(nrow(grid)), \(g) {
+tuning <- bind_rows(par_lapply(seq_len(nrow(grid)), \(g) {
   params <- modifyList(xgb_params, list(max_depth = grid$depth[g]))
   err <- lapply(val_days, \(d) {
     fc <- tryCatch(xgb_forecast_day(features, d, window, variants[[grid$model[g]]], params, rounds,
@@ -46,7 +45,7 @@ tuning <- bind_rows(mclapply(seq_len(nrow(grid)), \(g) {
   err <- do.call(rbind, err)
   tibble(model = grid$model[g], max_depth = grid$depth[g], rounds = rounds,
          mae = colMeans(err), n_days = nrow(err) / 24)
-}, mc.cores = cores))
+}))
 cat("tuning done in", round(difftime(Sys.time(), t0, units = "mins"), 1), "minutes\n")
 print(arrange(tuning, model, mae), n = Inf)
 
@@ -66,7 +65,7 @@ write_csv(mutate(tuning, chosen = paste(model, max_depth, rounds) %in%
 test_days <- which(daily$date >= as_date("2025-10-01") & complete.cases(P))
 
 t0 <- Sys.time()
-out <- mclapply(test_days, \(d) {
+out <- par_lapply(test_days, \(d) {
   bind_rows(lapply(names(variants), \(v) {
     b  <- best[best$model == v, ]
     fc <- tryCatch(xgb_forecast_day(features, d, window, variants[[v]],
@@ -75,7 +74,7 @@ out <- mclapply(test_days, \(d) {
                    error = \(e) NULL)
     if (is.null(fc)) NULL else tibble(date = daily$date[d], hour = 0:23, model = v, forecast = fc)
   }))
-}, mc.cores = cores)
+})
 cat("backtest done in", round(difftime(Sys.time(), t0, units = "mins"), 1), "minutes\n")
 
 actual <- tibble(date   = rep(daily$date, each = 24),

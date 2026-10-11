@@ -6,11 +6,11 @@ library(dplyr)
 library(tidyr)
 library(lubridate)
 library(readr)
-library(parallel)
 source("R/lear.R")
 source("R/bmt.R")
 source("R/exog.R")
 source("R/mcs.R")
+source("R/parallel.R")
 
 prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
 daily    <- build_daily(prices)
@@ -35,7 +35,6 @@ window <- 730
 pval   <- 0.05
 delta1 <- 1
 delta2 <- 1
-cores  <- max(1, detectCores() - 1)
 
 test_days <- which(daily$date >= as_date("2025-10-01") & complete.cases(P))
 
@@ -99,7 +98,7 @@ forecast_day <- function(d) {
 }
 
 t0  <- Sys.time()
-out <- mclapply(test_days, \(d) tryCatch(forecast_day(d), error = \(e) NULL), mc.cores = cores)
+out <- par_lapply(test_days, \(d) tryCatch(forecast_day(d), error = \(e) NULL))
 cat("done in", round(difftime(Sys.time(), t0, units = "mins"), 1), "minutes\n")
 
 actual <- tibble(date   = rep(daily$date, each = 24),
