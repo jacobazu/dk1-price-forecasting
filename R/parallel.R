@@ -1,11 +1,11 @@
-# lapply in parallel, also on windows
+# parallel lapply over days
 # CORES=1 runs one at a time
 
 par_lapply <- function(x, fun, cores = as.integer(Sys.getenv("CORES", max(1, parallel::detectCores() - 1)))) {
   if (cores <= 1) return(lapply(x, fun))
   if (.Platform$OS.type != "windows") return(parallel::mclapply(x, fun, mc.cores = cores))
 
-  # windows can't fork: start workers with the same packages and objects
+  # psock workers with the same packages and objects
   cl <- parallel::makeCluster(cores)
   on.exit(parallel::stopCluster(cl))
   parallel::clusterCall(cl, \(lib, wd, pkgs) {
