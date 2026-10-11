@@ -1,4 +1,4 @@
-# xgboost: one model for all 24 hours, target asinh-transformed like lear and bmt
+# xgboost, one model all hours
 
 library(xgboost)
 
@@ -11,11 +11,10 @@ xgb_params <- list(objective        = "reg:squarederror",
                    nthread          = 1)
 xgb_rounds <- 500
 
-# days x 24 to one long column
+# days x 24 to long
 long <- function(M) as.vector(t(M))
 
-# one row per day and hour: same-hour prices on D-1, D-2, D-3, D-7, level and range of D-1
-# plus the exogenous variables when given
+# features per day and hour
 xgb_design <- function(features, rows, exog = NULL) {
   P   <- features$P
   lag <- function(k) lag_days(P, k)[rows, , drop = FALSE]
@@ -45,7 +44,7 @@ xgb_design <- function(features, rows, exog = NULL) {
     colnames(m) <- paste0(a, c("_d1", "_d1_mean"))
     m
   }))
-  # energinet wind/solar, only in the study (published after the auction)
+  # energinet wind/solar, study only
   ws <- NULL
   if (!is.null(exog$wind)) {
     ws <- do.call(cbind, lapply(list(c("offwind_d0", "offwind"), c("onwind_d0", "onwind"),
@@ -70,8 +69,8 @@ xgb_design <- function(features, rows, exog = NULL) {
         hol_d1 = rep24(exog$hol[rows, "hol_d1"]))
 }
 
-# forecast all 24 hours of day d, rounds can be a vector (tuning)
-# seed = forecast date, so the backtest and the live run give the same forecast
+# xgboost forecast for day d
+# seed = date, reproducible
 xgb_forecast_day <- function(features, d, window = 730, exog = NULL, params = xgb_params,
                              rounds = xgb_rounds, seed) {
   P     <- features$P

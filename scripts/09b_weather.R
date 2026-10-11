@@ -1,6 +1,6 @@
-# BMT-X, LEAR-X and XGBoost-X with open-meteo weather (made 48 hours ahead) added
-# the weather archive starts march 2024, so the window is shorter than 2 years until march 2026
-# xgboost uses the depth and rounds from 09_xgb.R
+# -x models with weather
+# weather archive starts mar 2024
+# xgboost settings from 09_xgb.R
 
 library(dplyr)
 library(tidyr)

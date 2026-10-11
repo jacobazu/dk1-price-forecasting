@@ -1,5 +1,5 @@
-# BMT backtest, prices only
-# same setup as 04_lear.R, bmt picks the lagged prices by multiple testing instead of lasso
+# bmt backtest, prices only
+# same setup as 04_lear.R
 
 library(dplyr)
 library(tidyr)
@@ -42,7 +42,7 @@ results_long <- tibble(
 ) |>
   filter(!is.na(bmt))
 
-# compare with lear on the same hours
+# compare with lear
 lear  <- readRDS("data/processed/forecasts_lear.rds") |> select(date, hour, lear, naive_mix)
 naive <- tibble(date      = rep(daily$date + 1, each = 24),
                 hour      = rep(0:23, times = nrow(P)),
@@ -60,10 +60,10 @@ print(results)
 cat("hours compared:", nrow(comp), "\n")
 cat("average number of selected prices per hour:", round(mean(n_sel[test_days, ], na.rm = TRUE), 1), "\n")
 
-# how often each lagged price is selected, per forecast hour (share of test days)
+# selection share per hour
 sel_share <- sel_count / length(test_days)
 
-# heatmap of the selection
+# heatmap
 as_tibble(sel_share, rownames = "target") |>
   pivot_longer(-target, names_to = "input", values_to = "share") |>
   mutate(target = factor(target, levels = paste0("h", 0:23)),
@@ -79,7 +79,7 @@ as_tibble(sel_share, rownames = "target") |>
 saveRDS(results_long, "data/processed/forecasts_bmt.rds")
 saveRDS(sel_share, "data/processed/bmt_selection.rds")
 
-# share of test days each lagged price is selected, per hour (for the dashboard)
+# selection share, for dashboard
 dir.create("results", showWarnings = FALSE)
 readr::write_csv(as_tibble(sel_share, rownames = "target") |>
                    pivot_longer(-target, names_to = "input", values_to = "share") |>

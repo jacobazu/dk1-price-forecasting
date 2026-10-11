@@ -1,6 +1,6 @@
-# bias correction and 80% intervals from past errors, only days before D are used
-# bias = median error of the last 28 days, or a + b * forecast fitted on the same days (mincer-zarnowitz)
-# interval = 10% and 90% quantile of the last 60 days per hour, scaled by how volatile the week before was
+# bias correction and 80% bands
+# bias: median error, last 28 days
+# band: 10/90% quantiles, scaled
 
 library(dplyr)
 
@@ -9,7 +9,7 @@ k_int   <- 60
 k_vol   <- 7
 q_probs <- c(0.1, 0.9)
 
-# sd of the hourly prices in the week before each date
+# sd of last week's prices
 vol_scale <- function(prices, dates) {
   prices <- distinct(prices, date, hour, .keep_all = TRUE)
   tibble(date = dates,
@@ -19,7 +19,7 @@ vol_scale <- function(prices, dates) {
          }))
 }
 
-# bias and intervals for day D (lo/hi plain, lo_s/hi_s scaled)
+# bias and band for day D
 adjust_day <- function(errors, D, s_D) {
   past_b <- errors[errors$date >= D - k_bias & errors$date < D, ]
   past_i <- errors[errors$date >= D - k_int & errors$date < D & !is.na(errors$s), ]
@@ -32,7 +32,7 @@ adjust_day <- function(errors, D, s_D) {
   mutate(q, date = D, bias = median(past_b$e))
 }
 
-# mincer-zarnowitz correction (theil): actual = a + b * forecast on the same last 28 days
+# mincer-zarnowitz correction (theil)
 mz_day <- function(x, D) {
   past <- x[x$date >= D - k_bias & x$date < D, ]
   if (n_distinct(past$date) < 0.8 * k_bias) return(NULL)
@@ -40,7 +40,7 @@ mz_day <- function(x, D) {
   tibble(date = D, mz_a = ab[[1]], mz_b = ab[[2]])
 }
 
-# corrected forecasts and intervals for every day in fc
+# corrected forecasts and bands
 postprocess <- function(fc, m, scale) {
   x <- select(fc, date, hour, actual, forecast = all_of(m))
   errors <- x |>

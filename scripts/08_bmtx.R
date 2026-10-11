@@ -1,6 +1,6 @@
-# BMT-X backtest, all 16 combinations of four exogenous groups
-# groups: neighbour prices (D-1), wind and solar forecasts (D), holidays
-# LEAR-X = lasso on the same variables
+# bmt-x, 16 group combinations
+# neighbours, wind, solar, holidays
+# lear-x on same variables
 
 library(dplyr)
 library(tidyr)
@@ -16,7 +16,7 @@ prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
 daily    <- build_daily(prices)
 features <- make_features(daily)
 P        <- features$P
-D        <- features$X_dow[, -1]   # monday is the baseline
+D        <- features$X_dow[, -1]   # monday = baseline
 
 exog <- make_exog(daily$date,
                   readRDS("data/raw/exog_neighbours.rds"),
@@ -28,7 +28,7 @@ combos   <- expand.grid(rep(list(c(FALSE, TRUE)), 4))
 names(combos) <- groups
 combo_id <- apply(combos, 1, \(r) if (!any(r)) "prices" else paste(groups[r], collapse = "+"))
 
-# wind/solar are published after the auction, so combinations with them are only a study
+# wind/solar only in study
 learx_combos <- c("nb+hol", "nb+wind+solar+hol")
 
 window <- 730
@@ -51,12 +51,12 @@ forecast_day <- function(d) {
                                        ncol(ex$solar), ncol(ex$hol)))
   if (anyNA(X_full[d, ])) return(NULL)
 
-  # training days with all candidates and all 24 prices, same rows for every combination
+  # same training rows everywhere
   keep <- train[complete.cases(X_full[train, ]) & complete.cases(P[train, ])]
   Xtr  <- X_full[keep, ]
   Dtr  <- D[keep, ]
 
-  # controls taken out once, shared by all combinations and hours
+  # controls removed once
   qC  <- qr(cbind(1, Dtr))
   E0  <- qr.resid(qC, Xtr)
   df0 <- length(keep) - qC$rank
@@ -85,7 +85,7 @@ forecast_day <- function(d) {
         n_hol = sum(grp[sel] == "hol"))
     }
 
-    # LEAR-X, lasso on the same pool (all weekday dummies as in LEAR)
+    # lear-x, same pool
     for (lc in learx_combos) {
       cols <- which(grp %in% c("prices", strsplit(lc, "+", fixed = TRUE)[[1]]))
       m  <- fit_lasso_bic(cbind(Xtr[, cols], features$X_dow[keep, ]), y)
@@ -108,7 +108,7 @@ actual <- tibble(date   = rep(daily$date, each = 24),
 fc <- bind_rows(out) |>
   inner_join(actual, by = c("date", "hour"))
 
-# quick look: mae per combination
+# mae per combination
 fc |>
   group_by(model, combo) |>
   summarise(mae = mean(abs(actual - forecast)), n_sel = mean(n_sel), .groups = "drop") |>
@@ -117,7 +117,7 @@ fc |>
 
 saveRDS(fc, "data/processed/forecasts_bmtx.rds")
 
-# how many variables bmt picks from each group, per combination (for the dashboard)
+# variables picked per group
 dir.create("results", showWarnings = FALSE)
 fc |>
   filter(model == "bmtx") |>
@@ -126,7 +126,7 @@ fc |>
   write_csv("results/bmtx_selection.csv")
 
 
-# which groups help: mae and model confidence set over the 16 combinations, LEAR-X and LEAR
+# mcs over combinations
 lear <- readRDS("data/processed/forecasts_lear.rds") |>
   transmute(date, hour, name = "lear", forecast = lear, actual)
 study <- fc |>
@@ -135,7 +135,7 @@ study <- fc |>
   select(date, hour, name, forecast, actual) |>
   bind_rows(lear) |>
   group_by(date) |>
-  filter(n_distinct(name) == 18, n() == 18 * 24) |>   # days with every model and hour
+  filter(n_distinct(name) == 18, n() == 18 * 24) |>   # complete days only
   ungroup()
 
 naive <- tibble(date = rep(daily$date + 1, each = 24), hour = rep(0:23, times = nrow(P)),

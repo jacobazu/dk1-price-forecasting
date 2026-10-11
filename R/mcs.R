@@ -1,5 +1,5 @@
-# model confidence set (hansen, lunde & nason 2011), tmax statistic, circular block bootstrap
-# L = days x models of daily losses, returns the mcs p-value of each model
+# mcs, hansen et al. 2011
+# L: daily losses, days x models
 
 library(dplyr)
 

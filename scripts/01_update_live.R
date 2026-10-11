@@ -1,17 +1,16 @@
-# updating the live files on github every day, rolling 2 years
-# full history for the backtests comes from 01_download.R and 02_clean.R
+# daily update, rolling 2 years
 
 library(dplyr)
 library(lubridate)
 library(readr)
 source("R/get_eds.R")
 
-keep_days <- 740                       # 730 days for training + buffer for D-7 lag
-switch_dt <- as.Date("2025-10-01")     # switch from hourly to 15 min prices
+keep_days <- 740                       # 730 + buffer for lags
+switch_dt <- as.Date("2025-10-01")     # 15 min prices from here
 file_live <- "live/prices_dk1_live.csv"
 dir.create("live", showWarnings = FALSE)
 
-# 15 min prices to hourly average, same as in 02_clean.R
+# 15 min to hourly
 qh_to_hourly <- function(qh) {
   qh |>
     mutate(time = floor_date(ymd_hms(TimeUTC, tz = "UTC"), "hour")) |>
@@ -22,11 +21,11 @@ qh_to_hourly <- function(qh) {
 }
 
 if (file.exists(file_live)) {
-  # normal day, only download from last saved day
+  # normal day: only new days
   live <- read_csv(file_live, col_types = cols(time = col_datetime(), price = col_double()))
   from <- as_date(max(live$time)) - 1
 } else {
-  # first run, download 2 years once
+  # first run: 2 years
   start <- Sys.Date() - keep_days
   live  <- tibble(time = as.POSIXct(character(), tz = "UTC"), price = numeric())
   if (start < switch_dt) {
@@ -38,7 +37,7 @@ if (file.exists(file_live)) {
 
 new <- qh_to_hourly(get_eds("DayAheadPrices", format(from), format(Sys.Date() + 2)))
 
-# new rows overwrite old ones, then remove the oldest days
+# overwrite old rows, drop oldest
 cutoff <- as.POSIXct(Sys.Date() - keep_days, tz = "UTC")
 live <- bind_rows(new, live) |>
   distinct(time, .keep_all = TRUE) |>
@@ -47,8 +46,7 @@ live <- bind_rows(new, live) |>
 
 write_csv(live, file_live)
 
-# forecast and dashboard read this rds. only overwrite on github
-# so the full history on my pc is kept
+# only overwrite on github
 if (Sys.getenv("GITHUB_ACTIONS") == "true") {
   dir.create("data/processed", recursive = TRUE, showWarnings = FALSE)
   saveRDS(live, "data/processed/prices_dk1_hourly.rds")
@@ -58,7 +56,7 @@ cat("Live prices:", format(min(live$time)), "to", format(max(live$time)),
     "UTC,", nrow(live), "hours\n")
 
 
-# neighbour prices, if this fails the dk1 prices are still saved
+# neighbour prices, may fail
 tryCatch({
   areas   <- c("DE", "DK2", "NO2", "SE3", "SE4")
   file_nb <- "live/neighbours_live.csv"
@@ -83,7 +81,7 @@ tryCatch({
 }, error = \(e) message("Neighbour prices not updated: ", conditionMessage(e)))
 
 
-# open-meteo weather made 48 hours ahead, tomorrow's values are already known now
+# open-meteo, made 48h ahead
 tryCatch({
   source("R/weather.R")
   file_wx <- "live/weather_live.csv"

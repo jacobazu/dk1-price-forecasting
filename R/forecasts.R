@@ -1,10 +1,10 @@
-# backtest + live days where all models were saved before the auction
+# backtest + live forecasts
 
 library(dplyr)
 library(tidyr)
 library(readr)
 
-# ensemble = average of bmt-x, lear-x and xgboost-x
+# ensemble = mean of three
 ensemble_parts <- list(ensemble = c("bmtx", "learx", "xgbx"))
 add_ensembles <- function(df) {
   for (e in names(ensemble_parts)) df[[e]] <- rowMeans(as.matrix(df[, ensemble_parts[[e]]]))

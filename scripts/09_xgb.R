@@ -1,5 +1,5 @@
-# XGBoost backtest, prices only (XGB) and with neighbour prices and holidays (XGB-X)
-# one model for all 24 hours, depth and rounds tuned on apr-sep 2025 and then kept fixed
+# xgboost backtest
+# tuned on apr-sep 2025
 
 library(dplyr)
 library(tidyr)
@@ -22,11 +22,11 @@ exog <- make_exog(daily$date,
 
 window <- 730
 cores  <- max(1, detectCores() - 1)
-# no energinet wind/solar here, published after the auction
+# no energinet wind/solar
 variants <- list(xgb = NULL, xgbx = exog[c("nb", "hol")])
 
 
-# tuning: every third day of apr-sep 2025
+# tuning: every third day
 depths <- c(4, 6, 8)
 rounds <- c(250, 500, 750, 1000, 1500)
 val_days <- which(daily$date >= as_date("2025-04-01") & daily$date <= as_date("2025-09-30") &
@@ -62,7 +62,7 @@ write_csv(mutate(tuning, chosen = paste(model, max_depth, rounds) %in%
           "results/xgb_tuning.csv")
 
 
-# test period, same days as the other models
+# test period
 test_days <- which(daily$date >= as_date("2025-10-01") & complete.cases(P))
 
 t0 <- Sys.time()
@@ -92,7 +92,7 @@ fc |>
 saveRDS(fc, "data/processed/forecasts_xgb.rds")
 
 
-# which inputs the trees use most (gain), from the model on the latest window
+# feature importance (gain)
 d   <- max(test_days)
 imp <- bind_rows(lapply(names(variants), \(v) {
   b <- best[best$model == v, ]

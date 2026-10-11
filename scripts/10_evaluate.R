@@ -1,6 +1,5 @@
-# evaluation of the backtest + live days: accuracy, dm and gw tests, bias, shape of the day,
-# model confidence set, bias correction and intervals. runs every morning on github
-# results/backtest_forecasts.csv is rebuilt from the backtest output when it is there (my pc)
+# evaluation, runs daily on github
+# backtest csv rebuilt locally
 
 library(dplyr)
 library(tidyr)
@@ -13,7 +12,7 @@ source("R/postprocess.R")
 
 # models on the dashboard
 models <- c("ensemble", "bmtx", "learx", "xgbx", "naive_mix")
-# all single models stay in the backtest file
+# kept in backtest file
 stored <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
 dir.create("results", showWarnings = FALSE)
 
@@ -24,7 +23,7 @@ actual <- tibble(date = rep(daily$date, each = 24), hour = rep(0:23, times = nro
                  actual = as.vector(t(P)))
 
 
-# backtest forecasts, rebuilt when the backtest output is there
+# rebuild backtest forecasts
 bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "bmtx", "xgb", "weather"), ".rds")
 if (all(file.exists(bt_files))) {
   wide <- function(x) x |> select(date, hour, model, forecast) |>
@@ -32,9 +31,9 @@ if (all(file.exists(bt_files))) {
   backtest <- readRDS(bt_files[1]) |>
     select(date, hour, actual, lear, naive_mix) |>
     inner_join(select(readRDS(bt_files[2]), date, hour, bmt), by = c("date", "hour")) |>
-    # the -X models with weather (09b_weather.R)
+    # -x models with weather
     inner_join(wide(readRDS(bt_files[5])), by = c("date", "hour")) |>
-    # plain xgboost (09_xgb.R)
+    # plain xgboost
     inner_join(wide(filter(readRDS(bt_files[4]), model == "xgb")), by = c("date", "hour")) |>
     inner_join(transmute(actual, date = date + 1, hour, naive_day = actual), by = c("date", "hour")) |>
     drop_na() |>
@@ -53,7 +52,7 @@ cat("evaluation period:", format(min(fc$date)), "to", format(max(fc$date)), "-",
     n_distinct(backtest$date), "backtest days and", n_distinct(live$date), "live days\n")
 
 
-# accuracy, rmae relative to the weekly naive
+# accuracy, rmae vs weekly naive
 mae_naive <- mean(abs(fc$actual - fc$naive_mix))
 accuracy <- tibble(model = models) |>
   rowwise() |>
@@ -70,8 +69,8 @@ accuracy <- tibble(model = models) |>
 print(accuracy)
 
 
-# tests on the daily loss differential (multivariate dm, as in lago et al. 2021)
-# d_t = mean over the 24 hours of |e_a| - |e_b|, negative = model a more accurate
+# tests on daily loss differential
+# negative = a more accurate
 daily_loss <- function(m, loss = c("abs", "sq")) {
   loss <- match.arg(loss)
   e <- fc$actual - fc[[m]]
@@ -79,15 +78,15 @@ daily_loss <- function(m, loss = c("abs", "sq")) {
   as.numeric(tapply(l, fc$date, mean))
 }
 
-# dm test with the harvey-leybourne-newbold correction, one-step ahead
+# dm test, hln correction
 dm_test <- function(d) {
   n    <- length(d)
   stat <- mean(d) / sqrt(var(d) / n)
-  stat <- stat * sqrt((n - 1) / n)   # hln correction for h = 1
+  stat <- stat * sqrt((n - 1) / n)   # hln, h = 1
   c(stat = stat, p = 2 * pt(-abs(stat), df = n - 1))
 }
 
-# giacomini-white conditional test, instruments = constant and yesterday's differential
+# giacomini-white test
 gw_test <- function(d) {
   Z  <- cbind(1, head(d, -1)) * tail(d, -1)
   n  <- nrow(Z)
@@ -96,7 +95,7 @@ gw_test <- function(d) {
   c(stat = stat, p = pchisq(stat, df = ncol(Z), lower.tail = FALSE))
 }
 
-# per hour: in how many of the 24 hours is a significantly better / worse (holm corrected)
+# hours better / worse (holm)
 hour_tests <- function(a, b) {
   p_better <- sapply(0:23, \(h) {
     x <- fc[fc$hour == h, ]
@@ -127,8 +126,8 @@ tests <- bind_rows(lapply(pairs, \(ab) {
 print(select(tests, model_a, model_b, mae_diff, dm_p, gw_p, hours_a_better, hours_b_better))
 
 
-# bias: mean error and mincer-zarnowitz (actual = a + b * forecast, test a = 0 and b = 1)
-# newey-west covariance with 24 lags because hourly errors are autocorrelated
+# bias: mean error and mz
+# newey-west, 24 lags
 nw_vcov <- function(X, e, lag = 24) {
   n <- nrow(X)
   u <- X * e
@@ -157,7 +156,7 @@ bias <- bind_rows(lapply(models, \(m) {
 print(bias)
 
 
-# shape of the day: does the forecast find the cheapest and most expensive hour?
+# cheapest and peak hour
 shape <- bind_rows(lapply(models, \(m) {
   fc |>
     group_by(date) |>
@@ -175,14 +174,14 @@ shape <- bind_rows(lapply(models, \(m) {
 print(shape)
 
 
-# model confidence set over the models (same hours as the accuracy table)
+# model confidence set
 L_models <- sapply(models, \(m) daily_loss(m, "abs"))
 mcs_models <- mcs(L_models) |>
   mutate(in_mcs = mcs_p >= 0.10)
 print(mcs_models)
 
-# bias correction and 80% intervals (R/postprocess.R), corrected vs raw with a dm test
-# mz = mincer-zarnowitz correction, tested against raw and against the median shift
+# bias correction and bands
+# mz vs raw and median
 scale <- vol_scale(bind_rows(select(fc, date, hour, actual), actual), sort(unique(fc$date)))
 post <- bind_rows(lapply(setdiff(models, "naive_mix"), \(m) {
   x  <- postprocess(fc, m, scale)
@@ -207,7 +206,7 @@ post <- bind_rows(lapply(setdiff(models, "naive_mix"), \(m) {
          width        = mean(x$upper_s - x$lower_s),
          coverage_plain = mean(x$actual >= x$lower & x$actual <= x$upper),   # without scaling
          width_plain    = mean(x$upper - x$lower),
-         # interval score (gneiting & raftery): width + penalty when outside, lower is better
+         # interval score, lower is better
          score        = mean((x$upper_s - x$lower_s) + 2 / (1 - diff(q_probs)) *
                                (pmax(x$lower_s - x$actual, 0) + pmax(x$actual - x$upper_s, 0))),
          score_plain  = mean((x$upper - x$lower) + 2 / (1 - diff(q_probs)) *

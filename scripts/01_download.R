@@ -1,6 +1,6 @@
 
-# downloading DK1 day ahead prices and save them to data/raw/
-# hourly prices end 2025-09-30; 15-minute prices start 2025-10-01.
+# download dk1 day-ahead prices
+# 15 min from 1 oct 2025
 
 source("R/get_eds.R")
 dir.create("data/raw", recursive = TRUE, showWarnings = FALSE)

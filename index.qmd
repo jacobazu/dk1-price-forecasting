@@ -27,13 +27,13 @@ source("R/battery.R")
 source("R/postprocess.R")
 source("R/forecasts.R")   # add_ensembles()
 
-Sys.setlocale("LC_TIME", "C")   # english day and month names, also on a danish computer
+Sys.setlocale("LC_TIME", "C")   # english dates
 
 orange <- "#f97316"
 grey   <- "#6b7280"
 ink    <- "#1f2328"
 
-# actual prices in DK time
+# actual prices, dk time
 actual <- readRDS("data/processed/prices_dk1_hourly.rds") |>
   mutate(local = with_tz(time, "Europe/Copenhagen"),
          date  = as_date(local),
@@ -48,12 +48,12 @@ fc <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE) |>
 latest    <- max(fc$date)
 tomorrow  <- fc |> filter(date == latest)
 today_act <- actual |> filter(date == latest - 1)
-week_act  <- actual |> filter(date == latest - 7)   # same weekday as the forecast day
-made_utc  <- tomorrow$forecast_made_utc[1]                # read_csv may already parse it
+week_act  <- actual |> filter(date == latest - 7)   # same weekday
+made_utc  <- tomorrow$forecast_made_utc[1]                # may already be parsed
 if (is.character(made_utc)) made_utc <- ymd_hm(made_utc, tz = "UTC")
 made_dk   <- with_tz(made_utc, "Europe/Copenhagen")
 
-# scored live forecasts (last 30 days)
+# scored live days
 scored <- fc |>
   inner_join(actual, by = c("date", "hour")) |>
   filter(date >= max(date) - 29)
@@ -68,13 +68,13 @@ mae <- function(col) {
   if (nrow(s) == 0) "\u2013" else eur(mean(abs(s$actual - s[[col]])))
 }
 
-# models on the dashboard, a button appears for every one that is a column in forecasts_live.csv
+# models, one button each
 spot_labels <- c(ensemble  = "Ensemble",
                  bmtx      = "BMT-X",
                  learx     = "LEAR-X",
                  xgbx      = "XGBoost-X",
                  naive_mix = "Naive")
-# earlier models, only for a day without forecasts from the ones above (12 oct 2026)
+# older models, fallback only
 old_labels  <- c(lear = "LEAR", bmt = "BMT", xgb = "XGBoost")
 model_colors <- c(ensemble  = "#f97316",
                   bmtx      = "#7c3aed",
@@ -89,8 +89,8 @@ has_spot <- any(sapply(setdiff(names(spot_labels), "naive_mix"),
 model_labels <- if (has_spot) spot_labels else c(spot_labels, old_labels)
 models <- intersect(names(model_labels), names(fc))
 
-# html buttons above a chart (styled in theme.scss), one per model plus "All"
-# per_model = traces per model (band + line)
+# model buttons above a chart
+# per_model = traces per model
 model_buttons <- function(p, models, n_fixed = 1, per_model = 1) {
   vis <- c(lapply(models, \(m) c(rep(TRUE, n_fixed), rep(models == m, each = per_model))),
            list(c(rep(TRUE, n_fixed), rep(c(rep(FALSE, per_model - 1), TRUE), length(models)))))
@@ -134,7 +134,7 @@ chart_layout <- function(p, models = NULL, xtitle = "", n_fixed = 1, per_model =
   p
 }
 
-# everything below comes from results/*.csv, nothing is typed in by hand
+# all from results/*.csv
 read_res <- function(f) if (file.exists(f)) read_csv(f, show_col_types = FALSE) else NULL
 eval_acc   <- read_res("results/eval_accuracy.csv")    # 10_evaluate.R
 eval_tests <- read_res("results/eval_tests.csv")
@@ -170,7 +170,7 @@ eur_sign <- function(x) paste0(if (x >= 0) "+" else "\u2212", prettyNum(abs(roun
 p_txt    <- function(p) if (p < 0.001) "p < 0.001" else paste("p =", format(round(p, 3), nsmall = 3))
 p_tab    <- function(p) ifelse(p < 0.001, "<0.001", format(round(p, 3), nsmall = 3))
 
-# main model: lowest mae among the models with a forecast for tomorrow
+# main model: lowest mae
 real_models <- setdiff(models, "naive_mix")
 avail <- real_models[sapply(real_models, \(m) !all(is.na(tomorrow[[m]])))]
 main  <- if (has_eval) {
@@ -179,9 +179,9 @@ main  <- if (has_eval) {
 } else avail[1]
 main_label <- model_labels[[main]]
 
-# accuracy tile: the shown model vs the weekly naive
+# accuracy tile
 best_all   <- if (has_eval) eval_acc$model[!grepl("^naive", eval_acc$model)][1] else NA
-# the shown model, or the best one when the shown one is an earlier model
+# fallback for older models
 best_bt    <- if (has_eval && main %in% eval_acc$model) main else best_all
 bt_improve <- if (!is.na(best_bt)) paste0("\u2212", round(100 * (1 - eval_acc$rmae[eval_acc$model == best_bt])), "%") else "\u2013"
 bt_label   <- if (is.na(best_bt)) "" else if (best_bt == main) cap(sub("^the ", "", text_labels[[best_bt]])) else
@@ -191,11 +191,11 @@ live_txt   <- if (has_eval && !has_spot) {
           format(latest, "%a %d %b"), text_labels[[main]])
 } else ""
 
-# tests: find a row for two models in either order
+# find test row
 find_test <- function(tab, a, b) {
   r <- tab[(tab$model_a == a & tab$model_b == b) | (tab$model_a == b & tab$model_b == a), ]
   if (nrow(r) == 0) return(NULL)
-  if (r$model_a != a) {   # flip so the numbers are for a vs b
+  if (r$model_a != a) {   # flip to a vs b
     for (col in intersect(c("mae_diff", "mean_eur_per_day", "dm_stat", "dm_sq_stat", "t"), names(r))) r[[col]] <- -r[[col]]
     if ("hours_a_better" %in% names(r)) r[c("hours_a_better", "hours_b_better")] <- r[c("hours_b_better", "hours_a_better")]
   }
@@ -224,7 +224,7 @@ sig_txt <- if (has_eval && nrow(filter(eval_acc, !grepl("^naive", model))) >= 2)
   }
 } else ""
 
-# bias correction and band text
+# bias and band text
 post_txt <- if (!is.null(eval_post) && main %in% eval_post$model) {
   r <- eval_post[eval_post$model == main, ]
   n_sig <- sum(eval_post$dm_p < 0.05 & eval_post$mae_corr < eval_post$mae_raw)
@@ -258,7 +258,7 @@ eval_period <- if (has_eval) {
           prettyNum(eval_acc$n_hours[1], big.mark = ","))
 } else ""
 
-# BMT-X combinations (variables tab)
+# bmt-x combinations
 has_bmtx  <- !is.null(bmtx_combo)
 group_txt <- c(nb = "neighbour prices", wind = "wind", solar = "solar", hol = "holidays")
 combo_txt <- function(combo) {
@@ -298,7 +298,7 @@ bat_live  <- if (has_battery && "source" %in% names(bat_daily)) sum(bat_daily$so
 bat_period <- if (bat_live > 0) sprintf("%d backtest days, then %d live %s", bat_days - bat_live, bat_live,
                                         if (bat_live == 1) "day" else "days") else sprintf("%d backtest days", bat_days)
 
-# battery text, follows the results
+# battery text
 bat_cmp <- function(a, b) {
   r <- find_test(bat_tests, a, b)
   if (is.null(r)) return("")
@@ -310,7 +310,7 @@ bat_cmp <- function(a, b) {
             text_labels[[a]], text_labels[[b]], p_txt(r$p_value))
   }
 }
-# money vs accuracy for two forecasts
+# money vs accuracy
 bat_rank <- function(a, b) {
   more_acc   <- bat_val(a, "mae") < bat_val(b, "mae")
   more_money <- bat_val(a, "total_eur") > bat_val(b, "total_eur")
@@ -332,7 +332,7 @@ bat_txt <- if (has_battery) {
   paste(paste0(toupper(substring(parts, 1, 1)), substring(parts, 2)), collapse = " ")
 } else ""
 
-# 80% band for tomorrow from each model's past errors (R/postprocess.R)
+# 80% band for tomorrow
 vol_now <- vol_scale(bind_rows(actual, if (!is.null(backtest)) select(backtest, date, hour, actual)),
                      seq(latest - k_int - 1, latest, by = "day"))
 past_errors <- function(m) {
@@ -353,7 +353,7 @@ bands <- lapply(setNames(models, models), \(m) {
 band_cov <- function(m) if (!is.null(eval_post) && m %in% eval_post$model) eval_post$coverage[eval_post$model == m] else NA
 rgba <- function(hex, a) { v <- grDevices::col2rgb(hex); sprintf("rgba(%d,%d,%d,%.2f)", v[1], v[2], v[3], a) }
 
-# forecast tiles, from the main model
+# forecast tiles
 diff_today <- mean(tomorrow[[main]]) - mean(today_act$actual)
 diff_html  <- if (is.na(diff_today)) "" else
   sprintf('<span class="%s">%s%s</span> vs %s',
@@ -362,7 +362,7 @@ diff_html  <- if (is.na(diff_today)) "" else
 cheap <- tomorrow[which.min(tomorrow[[main]]), ]
 peak  <- tomorrow[which.max(tomorrow[[main]]), ]
 
-# live battery profit with the saved live forecasts
+# live battery profit
 lp_def   <- battery_lp(if (has_battery) as.list(setNames(bat_setup$value, bat_setup$name)) else battery_setup)
 live_days <- scored |> group_by(date) |> filter(n() == 24) |> ungroup()
 live_bat <- if (nrow(live_days) > 0) {
@@ -453,9 +453,9 @@ p <- plot_ly() |>
             line = list(color = "#cfc6bb", width = 2, dash = "dash"),
             hovertemplate = paste0("%{y:.1f} €/MWh<extra>", format(latest - 7, "%a %d %b"), "</extra>"))
 
-# the naive is left out, its forecast is one of the two actual lines
+# naive left out
 fc_models <- setdiff(models, "naive_mix")
-fc_models <- c(main, setdiff(fc_models, main))   # chart opens on the same model as the tiles
+fc_models <- c(main, setdiff(fc_models, main))   # open on main model
 
 for (m in fc_models) {
   b <- bands[[m]]

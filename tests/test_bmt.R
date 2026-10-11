@@ -1,4 +1,4 @@
-# check that the fast bmt_select() picks the same variables as boosting_glm(link = "mean")
+# bmt_select() vs boosting_glm()
 
 source("R/boosting_glm.R")
 source("R/bmt.R")
@@ -9,7 +9,7 @@ check <- function(y, X, Xcond, pval = 0.05, delta1 = 1, delta2 = 1) {
   identical(slow, fast)
 }
 
-# simulated data, a few true variables and correlated noise variables
+# simulated data
 set.seed(1)
 ok <- sapply(1:20, \(i) {
   Tn <- 300; N <- 40
@@ -20,7 +20,7 @@ ok <- sapply(1:20, \(i) {
 })
 cat("simulated:", sum(ok), "of", length(ok), "identical\n")
 
-# real prices, one hour, same inputs as the forecast
+# real prices, one hour
 if (file.exists("data/processed/prices_dk1_hourly.rds")) {
   source("R/lear.R")
   prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
@@ -44,7 +44,7 @@ if (file.exists("data/processed/prices_dk1_hourly.rds")) {
 
 stopifnot(all(ok))
 
-# bmt_select_resid (used for BMT-X) gives the same selection as bmt_select
+# bmt_select_resid vs bmt_select
 set.seed(2)
 ok_resid <- sapply(1:20, \(i) {
   Tn <- 300; N <- 60

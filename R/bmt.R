@@ -1,5 +1,5 @@
-# fast bmt with mean link, same selections as boosting_glm() (tests/test_bmt.R)
-# all candidates are tested at once on residuals (frisch-waugh) instead of one lm each
+# fast bmt, mean link
+# t-stats via residuals (frisch-waugh)
 
 bmt_select <- function(y, X, Xcond = NULL, pval = 0.05, delta1 = 1, delta2 = 1) {
   X  <- as.matrix(X)
@@ -17,7 +17,7 @@ bmt_select <- function(y, X, Xcond = NULL, pval = 0.05, delta1 = 1, delta2 = 1) 
     cand <- which(!ind)
     if (length(cand) == 0) break
 
-    # residuals after intercept, controls and selected variables
+    # residuals on controls + selected
     q  <- qr(cbind(1, Xcond, X[, ind, drop = FALSE]))
     ey <- qr.resid(q, y)
     E  <- qr.resid(q, X[, cand, drop = FALSE])
@@ -28,7 +28,7 @@ bmt_select <- function(y, X, Xcond = NULL, pval = 0.05, delta1 = 1, delta2 = 1) 
     ssr <- sum(ey^2) - sxy^2 / sxx
     t   <- abs(sxy) / sqrt(sxx * ssr / df)
 
-    # candidates that are (almost) collinear with the ones already in, lm drops them
+    # drop near-collinear candidates
     xc <- scale(X[, cand, drop = FALSE], scale = FALSE)
     t[sxx < 1e-12 * colSums(xc^2) | sxx == 0] <- NA
 
@@ -45,7 +45,7 @@ bmt_select <- function(y, X, Xcond = NULL, pval = 0.05, delta1 = 1, delta2 = 1) 
 }
 
 
-# forecast all 24 hours of day d: bmt selection, then ols on the selected + weekday dummies
+# bmt forecast for day d
 bmt_forecast_day <- function(features, d, window = 730, pval = 0.05, delta1 = 1, delta2 = 1,
                              return_selected = FALSE) {
   P     <- features$P
@@ -55,7 +55,7 @@ bmt_forecast_day <- function(features, d, window = 730, pval = 0.05, delta1 = 1,
   s   <- mad(P[train, ], na.rm = TRUE)
 
   X_all <- transform_p(features$X_price, med, s)
-  X_dow <- features$X_dow[, -1, drop = FALSE]   # monday is the baseline
+  X_dow <- features$X_dow[, -1, drop = FALSE]   # monday = baseline
 
   X_test <- X_all[d, , drop = FALSE]
   if (anyNA(X_test)) stop("Missing input prices for the forecast day")
@@ -83,8 +83,7 @@ bmt_forecast_day <- function(features, d, window = 730, pval = 0.05, delta1 = 1,
 }
 
 
-# same selection, but with the controls (intercept + weekday dummies) already taken out of
-# E and ey, and each selected column taken out of the rest (gram-schmidt). used for bmt-x
+# same, controls removed first (bmt-x)
 bmt_select_resid <- function(E, ey, df0, ss0, pval = 0.05, delta1 = 1, delta2 = 1) {
   N   <- ncol(E)
   thr <- c(qnorm(1 - (pval / N^(delta1 - 1)) / (2 * N)),

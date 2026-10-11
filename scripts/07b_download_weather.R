@@ -1,10 +1,10 @@
-# open-meteo weather forecasts made 48 hours ahead (before the auction), from january 2024
+# open-meteo, made 48h ahead
 
 source("R/weather.R")   # sites and get_weather()
 
 weather <- get_weather(as_date("2024-01-01"), Sys.Date() + 1)
 
-# coverage: first hour with data and share missing after that, per column
+# coverage
 print(bind_rows(lapply(setdiff(names(weather), "time"), \(v) {
   x <- weather[[v]]
   first <- which(!is.na(x))[1]

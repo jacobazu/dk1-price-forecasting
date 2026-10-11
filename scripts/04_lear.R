@@ -1,19 +1,15 @@
-#LEAR LASSO estimated auto regressive model
-# article: Lago (2021) - applied energy
+# lear backtest
+# lago et al. (2021)
 
 
-# forecasting setup:
-# on D-1 forecast all 24 hours of day D.
-# one LASSO regression per hour - 24 regressions, re estimated every day
-# all prices from day D-1, D-2, D-3 and D-7 plus weekday dummies are input
-# going over a rolling window over the data set time frame ( this analysis is 2 years in this case ) before each forecast day.
-# lambda selection: BIC
-# prices are transformed  asinh((p - median) / MAD) before fitting,
-# which handles spikes and negative prices. Forecasts are transformed back.
+# one lasso per hour, daily
+# lags D-1, D-2, D-3, D-7
+# 2-year window, lambda by bic
+# asinh((p - median) / mad)
 
 
 library(ggplot2)
-source("R/lear.R")   # build_daily, make_features, lear_forecast_day (same code as the live forecast)
+source("R/lear.R")   # same code as live
 
 prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
 daily    <- build_daily(prices)
@@ -21,7 +17,7 @@ features <- make_features(daily)
 P        <- features$P
 dow      <- features$dow
 
-# rolling forecast over data set test frame, 2 years of training before each day
+# rolling forecasts
 test_days <- which(daily$date >= as_date("2025-10-01") & complete.cases(P))
 F_lear    <- matrix(NA, nrow(P), 24)
 

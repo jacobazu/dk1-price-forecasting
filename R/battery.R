@@ -1,5 +1,5 @@
-# battery plan for one day (milp), also used for the live profit on the dashboard
-# c = charge, d = discharge, s = state of charge, u = 1 when charging (so not both in one hour)
+# battery plan for one day
+# c charge, d discharge, s stored
 
 library(lpSolve)
 
@@ -16,7 +16,7 @@ battery_lp <- function(setup = battery_setup, n = 24) {
     rows[[length(rows) + 1]] <<- r; dirs <<- c(dirs, dir); rhs <<- c(rhs, b)
   }
 
-  # s_h = s_(h-1) + eff*c_h - d_h/eff, starts empty
+  # storage balance, starts empty
   for (h in 1:n) {
     r <- numeric(4 * n)
     r[soc[h]] <- 1
@@ -40,7 +40,7 @@ battery_lp <- function(setup = battery_setup, n = 24) {
   list(A = do.call(rbind, rows), dirs = dirs, rhs = rhs, ic = ic, id = id, iu = iu, n = n)
 }
 
-# best plan for given prices, MWh sold per hour (negative = bought)
+# best plan for given prices
 battery_schedule <- function(price, lp_def = battery_lp()) {
   n   <- lp_def$n
   obj <- c(-price, price, rep(0, 2 * n))
@@ -49,7 +49,7 @@ battery_schedule <- function(price, lp_def = battery_lp()) {
   sol$solution[lp_def$id] - sol$solution[lp_def$ic]
 }
 
-# profit when planning with the forecast and paid the actual prices
+# plan on forecast, paid actual
 battery_profit <- function(forecast, actual, lp_def = battery_lp()) {
   sum(actual * battery_schedule(forecast, lp_def))
 }

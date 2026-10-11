@@ -1,11 +1,11 @@
-# downloading exogenous variables: neighbour prices, dk1 wind/solar forecasts, holidays
-# wind/solar are published at 18:00 on D-1, after the auction, so only used in the study in 08
+# download exogenous variables
+# wind/solar after auction, study only
 
 library(dplyr)
 library(tidyr)
 library(lubridate)
 source("R/get_eds.R")
-source("R/lear.R")    # lag_days(), used by R/exog.R
+source("R/lear.R")    # lag_days()
 source("R/exog.R")    # dk_holidays()
 
 start     <- "2019-01-01"
@@ -16,7 +16,7 @@ areas     <- c("DE", "DK2", "NO2", "SE3", "SE4")
 dir.create("data/raw", recursive = TRUE, showWarnings = FALSE)
 dir.create("data/processed", recursive = TRUE, showWarnings = FALSE)
 
-# empty tibble instead of an error when a dataset has nothing for an area
+# empty tibble if no data
 fetch <- function(dataset, from, to, area) {
   r <- tryCatch(get_eds(dataset, from, to, area = area), error = \(e) {
     message(dataset, " ", area, ": ", conditionMessage(e)); NULL
@@ -25,7 +25,7 @@ fetch <- function(dataset, from, to, area) {
 }
 
 
-# neighbour prices, hourly until 30 sep 2025, 15 min after (averaged to hourly)
+# neighbour prices
 nb_old <- bind_rows(lapply(areas, \(a) fetch("Elspotprices", start, switch_dt, a)))
 nb_new <- bind_rows(lapply(areas, \(a) fetch("DayAheadPrices", switch_dt, end, a)))
 
@@ -49,7 +49,7 @@ neighbours <- bind_rows(nb_old, nb_new) |>
   arrange(time)
 
 
-# dk1 wind and solar, day-ahead forecasts
+# dk1 wind and solar
 wind_solar <- fetch("Forecasts_Hour", start, end, "DK1")
 
 if (nrow(wind_solar) > 0) {
@@ -67,7 +67,7 @@ if (nrow(wind_solar) > 0) {
 holidays <- dk_holidays(year(as_date(start)):(year(Sys.Date()) + 1))
 
 
-# coverage: when each variable starts and how much is missing after that
+# coverage
 coverage <- function(df) {
   if (nrow(df) == 0) return(tibble())
   all_hours <- tibble(time = seq(min(df$time), max(df$time), by = "hour"))

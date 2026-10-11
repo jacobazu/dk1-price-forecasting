@@ -1,6 +1,6 @@
-# bmt-x and lear-x for one day, same steps as in 08_bmtx.R
+# bmt-x and lear-x, one day
 
-# candidates for day d: dk1 price lags + exogenous groups
+# candidates for day d
 x_inputs <- function(features, exog, d, groups, window = 730) {
   P     <- features$P
   train <- (d - window):(d - 1)
@@ -18,7 +18,7 @@ x_inputs <- function(features, exog, d, groups, window = 730) {
 bmtx_forecast_day <- function(features, exog, d, groups = c("nb", "hol", "wx"), window = 730,
                               pval = 0.05, delta1 = 1, delta2 = 1) {
   inp <- x_inputs(features, exog, d, groups, window)
-  D   <- features$X_dow[, -1]   # monday is the baseline
+  D   <- features$X_dow[, -1]   # monday = baseline
   Xtr <- inp$X[inp$keep, ]
   Dtr <- D[inp$keep, ]
 

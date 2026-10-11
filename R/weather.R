@@ -1,5 +1,5 @@
 # open-meteo sites and download
-# _previous_day2 = forecast made 48 hours before the hour, so before the auction
+# previous_day2 = made 48h before
 
 library(httr2)
 library(dplyr)
@@ -30,7 +30,7 @@ get_site <- function(site, lat, lon, type, from, to) {
          value = as.numeric(resp$hourly[[var]]))
 }
 
-# all sites, one row per hour (utc), a quarter at a time
+# all sites, hourly utc
 get_weather <- function(from, to) {
   periods <- tibble(from = seq(as_date(from), as_date(to), by = "quarter")) |>
     mutate(to = pmin(lead(from, default = as_date(to) + 1) - 1, as_date(to)))

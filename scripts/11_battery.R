@@ -1,6 +1,6 @@
-# economic evaluation with a battery, runs every morning on github after 10_evaluate.R
-# the battery plans each day with the forecast and is paid the actual prices
-# perfect = plans with the actual prices
+# battery backtest, runs daily
+# plan on forecast, paid actual
+# perfect = actual prices
 
 library(dplyr)
 library(tidyr)
@@ -12,20 +12,20 @@ source("R/lear.R")
 source("R/battery.R")
 source("R/forecasts.R")
 
-# battery, see R/battery.R
+# see R/battery.R
 cap_mwh   <- battery_setup$cap_mwh
 power_mw  <- battery_setup$power_mw
 eff_rt    <- battery_setup$eff_rt
 max_cycle <- battery_setup$max_cycle
 
-# same forecasts as 10_evaluate.R
+# same forecasts as 10
 models <- c("ensemble", "bmtx", "learx", "xgbx", "naive_mix")
 fc <- all_forecasts(models)
 
 
 lp_def <- battery_lp()
 
-# plan with each forecast, paid with actual prices
+# plan with each forecast
 strategies <- c(perfect = "actual", setNames(models, models))
 days <- unique(fc$date)
 
@@ -40,7 +40,7 @@ profit <- bind_cols(tibble(date = days), as_tibble(do.call(rbind, profit)))
 years   <- nrow(profit) / 365
 perfect <- sum(profit$perfect)
 
-# mae of each forecast on the same days, to compare money with accuracy
+# mae on same days
 mae <- sapply(strategies, \(col) mean(abs(fc$actual - fc[[col]])))
 
 summary_tbl <- profit |>
@@ -55,7 +55,7 @@ summary_tbl <- profit |>
 print(summary_tbl)
 
 
-# does a model earn significantly more than another? t test on daily profit differences, newey west se
+# profit tests, newey-west
 nw_test <- function(d, lag = 7) {
   n <- length(d)
   e <- d - mean(d)
@@ -88,7 +88,7 @@ p <- profit |>
   theme_minimal()
 print(p)
 
-# results for the dashboard
+# for the dashboard
 dir.create("results", showWarnings = FALSE)
 write_csv(mutate(profit, across(-date, \(x) round(x, 2))) |>
             left_join(distinct(fc, date, source), by = "date"),

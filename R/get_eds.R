@@ -10,7 +10,7 @@ get_eds <- function(dataset, start, end, area = "DK1") {
       filter = jsonlite::toJSON(list(PriceArea = area)),
       limit  = 0                                  # 0 = all records
     ) |>
-    req_retry(max_tries = 5, backoff = \(i) 30) |>  # rate limit helper
+    req_retry(max_tries = 5, backoff = \(i) 30) |>  # retry on rate limit
     req_perform() |>
     resp_body_json(simplifyVector = TRUE)
   

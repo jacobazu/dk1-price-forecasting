@@ -1,10 +1,10 @@
-# exogenous variables, one row per day like the price lags
+# exogenous variables per day
 
 library(dplyr)
 library(tidyr)
 library(lubridate)
 
-# hourly series (utc) to days x 24 in danish time, same as build_daily()
+# hourly utc to days x 24
 to_daily <- function(df, col, dates) {
   d <- df |>
     transmute(local = with_tz(time, "Europe/Copenhagen"), value = .data[[col]]) |>
@@ -21,7 +21,7 @@ to_daily <- function(df, col, dates) {
   as.matrix(d)
 }
 
-# fill short gaps by linear interpolation
+# fill short gaps
 fill_gaps <- function(df, cols) {
   grid <- tibble(time = seq(min(df$time), max(df$time), by = "hour"))
   df <- left_join(grid, df, by = "time")
@@ -32,7 +32,7 @@ fill_gaps <- function(df, cols) {
   df
 }
 
-# danish holidays, easter from the gregorian algorithm
+# danish holidays
 easter <- function(y) {
   a <- y %% 19; b <- y %/% 100; c <- y %% 100
   d <- b %/% 4; e <- b %% 4; f <- (b + 8) %/% 25; g <- (b - f + 1) %/% 3
@@ -49,7 +49,7 @@ dk_holidays <- function(years) {
   bind_rows(lapply(years, \(y) {
     e <- easter(y)
     tibble(date = c(make_date(y, 1, 1), e - 3, e - 2, e, e + 1,
-                    if (y < 2024) e + 26,             # store bededag, abolished from 2024
+                    if (y < 2024) e + 26,             # store bededag, until 2023
                     e + 39, e + 49, e + 50,
                     make_date(y, 6, 5), make_date(y, 12, 24), make_date(y, 12, 25),
                     make_date(y, 12, 26), make_date(y, 12, 31)))
@@ -58,8 +58,8 @@ dk_holidays <- function(years) {
     arrange(date)
 }
 
-# open-meteo weather forecasts made 48 hours ahead
-# wind speed through a simple power curve (0 below 3 m/s, full from 12 m/s), solar radiation
+# open-meteo, made 48h ahead
+# wind via simple power curve
 make_weather <- function(dates, weather) {
   w <- weather |>
     transmute(time,
@@ -71,7 +71,7 @@ make_weather <- function(dates, weather) {
   cbind(wpow, solar)
 }
 
-# all exogenous variables per group, not transformed (wind_solar = NULL leaves them out)
+# exogenous variables per group
 make_exog <- function(dates, neighbours, wind_solar, holidays) {
   areas <- c("DE", "DK2", "NO2", "SE3", "SE4")
   nb <- do.call(cbind, lapply(areas, \(a) {
@@ -95,7 +95,7 @@ make_exog <- function(dates, neighbours, wind_solar, holidays) {
   list(nb = nb, wind = wind, solar = solar, hol = hol)
 }
 
-# transform on the training window: neighbour prices asinh like dk1, wind/solar/weather standardised
+# transform on training window
 transform_exog <- function(exog, train) {
   block <- function(X, f) {
     if (is.null(X)) return(NULL)
