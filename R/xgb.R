@@ -62,7 +62,16 @@ xgb_design <- function(features, rows, exog = NULL) {
       m
     }))
   }
-  cbind(X, nb, ws,
+  # open-meteo weather (wind power curve and solar) for the hour + daily mean, if exog has it
+  wx <- NULL
+  if (!is.null(exog$wx)) {
+    wx <- do.call(cbind, lapply(c("wxwind_d0", "wxsolar_d0"), \(v) {
+      m <- series(exog$wx, v)
+      colnames(m) <- paste0(sub("_d0", "", v), c("", "_mean"))
+      m
+    }))
+  }
+  cbind(X, nb, ws, wx,
         hol_d0 = rep24(exog$hol[rows, "hol_d0"]),
         hol_d1 = rep24(exog$hol[rows, "hol_d1"]))
 }

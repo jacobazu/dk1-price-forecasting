@@ -1,0 +1,56 @@
+# BMT-X, LEAR-X and XGBoost-X with weather forecasts added (open-meteo, made 48 hours ahead, so
+# known before the auction): neighbour prices + holidays + wind power curve + solar radiation
+# same test days as the other models. the weather archive starts 7 march 2024, so until march 2026
+# the training window is shorter than 2 years for these models (days without weather are left out)
+# xgboost uses the depth and rounds chosen for XGBoost-X in 09_xgb.R (no new tuning)
+# needs 02_clean.R, 07_download_exog.R, 07b_download_weather.R and 09_xgb.R
+
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(readr)
+library(parallel)
+source("R/lear.R")
+source("R/bmt.R")
+source("R/exog.R")
+source("R/xmodels.R")
+source("R/xgb.R")
+
+prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
+daily    <- build_daily(prices)
+features <- make_features(daily)
+P        <- features$P
+
+exog <- make_exog(daily$date, readRDS("data/raw/exog_neighbours.rds"), NULL,
+                  readRDS("data/processed/holidays_dk.rds"))
+exog$wx <- make_weather(daily$date, readRDS("data/raw/weather_openmeteo.rds"))
+
+groups <- c("nb", "hol", "wx")
+tun    <- read_csv("results/xgb_tuning.csv", show_col_types = FALSE) |> filter(model == "xgbx", chosen)
+cores  <- as.integer(Sys.getenv("CORES", max(1, detectCores() - 1)))
+
+test_days <- which(daily$date >= as_date("2025-10-01") & complete.cases(P))
+
+t0 <- Sys.time()
+out <- mclapply(test_days, \(d) {
+  f <- list(
+    bmtx  = tryCatch(bmtx_forecast_day(features, exog, d, groups), error = \(e) NULL),
+    learx = tryCatch(learx_forecast_day(features, exog, d, groups), error = \(e) NULL),
+    xgbx  = tryCatch(xgb_forecast_day(features, d, exog = exog[groups],
+                                      params = modifyList(xgb_params, list(max_depth = tun$max_depth)),
+                                      rounds = tun$rounds, seed = as.integer(daily$date[d])),
+                     error = \(e) NULL))
+  bind_rows(lapply(names(f), \(m) if (is.null(f[[m]])) NULL else
+    tibble(date = daily$date[d], hour = 0:23, model = m, forecast = f[[m]])))
+}, mc.cores = cores)
+cat("done in", round(difftime(Sys.time(), t0, units = "mins"), 1), "minutes\n")
+
+actual <- tibble(date = rep(daily$date, each = 24), hour = rep(0:23, times = nrow(P)),
+                 actual = as.vector(t(P)))
+fc <- bind_rows(out) |> inner_join(actual, by = c("date", "hour"))
+fc |>
+  group_by(model) |>
+  summarise(mae = mean(abs(actual - forecast)), days = n_distinct(date), .groups = "drop") |>
+  print()
+
+saveRDS(fc, "data/processed/forecasts_weather.rds")

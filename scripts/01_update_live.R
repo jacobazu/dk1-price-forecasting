@@ -84,3 +84,22 @@ tryCatch({
   write_csv(nb_live, file_nb)
   cat("Live neighbour prices:", format(min(nb_live$time)), "to", format(max(nb_live$time)), "UTC\n")
 }, error = \(e) message("Neighbour prices not updated: ", conditionMessage(e)))
+
+
+# weather forecasts made 48 hours ahead (open-meteo, see 07b_download_weather.R), same rolling window
+# the values for tomorrow were forecast on the day before yesterday, so they are known now
+tryCatch({
+  source("R/weather.R")
+  file_wx <- "live/weather_live.csv"
+  wx_live <- read_csv(file_wx, col_types = cols(time = col_datetime(), .default = col_double()))
+  wx_new  <- get_weather(as_date(max(wx_live$time)) - 2, Sys.Date() + 1)
+
+  wx_live <- bind_rows(wx_new, wx_live) |>
+    filter(if_all(-time, \(x) !is.na(x))) |>
+    distinct(time, .keep_all = TRUE) |>
+    filter(time >= cutoff) |>
+    arrange(time)
+
+  write_csv(wx_live, file_wx)
+  cat("Live weather:", format(min(wx_live$time)), "to", format(max(wx_live$time)), "UTC\n")
+}, error = \(e) message("Weather not updated: ", conditionMessage(e)))

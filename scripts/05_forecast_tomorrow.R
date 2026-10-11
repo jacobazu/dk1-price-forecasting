@@ -37,14 +37,16 @@ safe <- function(name, f) tryCatch(f(), error = \(e) {
   message(name, " failed: ", conditionMessage(e)); rep(NA_real_, 24)
 })
 
-# -X models with what is known before the auction: neighbour prices from today and holidays
-# (no wind/solar, their day-ahead forecasts are published at 18:00)
+# -X models with what is known before the auction: neighbour prices from today, holidays and
+# weather forecasts made 48 hours ahead (energinet's wind/solar forecasts come at 18:00, too late)
 exog <- make_exog(daily$date,
                   read_csv("live/neighbours_live.csv", show_col_types = FALSE),
                   NULL,
                   dk_holidays(year(min(daily$date)):year(target)))
-bmtx  <- safe("BMT-X",  \() bmtx_forecast_day(features, exog, d))
-learx <- safe("LEAR-X", \() learx_forecast_day(features, exog, d))
+exog$wx <- make_weather(daily$date, read_csv("live/weather_live.csv", show_col_types = FALSE))
+groups  <- c("nb", "hol", "wx")
+bmtx  <- safe("BMT-X",  \() bmtx_forecast_day(features, exog, d, groups))
+learx <- safe("LEAR-X", \() learx_forecast_day(features, exog, d, groups))
 
 # xgboost with the depth and rounds chosen in 09_xgb.R
 xgb_day <- function(m, ex) {
@@ -55,7 +57,7 @@ xgb_day <- function(m, ex) {
                    params = modifyList(xgb_params, list(max_depth = tun$max_depth)),
                    rounds = tun$rounds, seed = as.integer(target))
 }
-xgbx <- safe("XGBoost-X", \() xgb_day("xgbx", exog[c("nb", "hol")]))
+xgbx <- safe("XGBoost-X", \() xgb_day("xgbx", exog[groups]))
 naive_day <- features$P[d - 1, ]   # same hour yesterday
 naive_mix <- if (features$dow[d] %in% c(1, 6, 7)) features$P[d - 7, ] else naive_day   # week ago on mon, sat, sun
 

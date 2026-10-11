@@ -3,7 +3,7 @@
 # shape of the day (cheapest / most expensive hour) and a model confidence set over the models
 # runs every morning on github, so the results grow by one live day each day
 # the backtest forecasts are stored in results/backtest_forecasts.csv, made from the output of
-# 04_lear.R, 06_bmt.R, 08_bmtx.R and 09_xgb.R when those files are there (on my pc, not on github)
+# 04_lear.R, 06_bmt.R, 09_xgb.R and 09b_weather.R when those files are there (on my pc, not on github)
 # writes small csv files to results/ that the dashboard reads
 
 library(dplyr)
@@ -29,16 +29,17 @@ actual <- tibble(date = rep(daily$date, each = 24), hour = rep(0:23, times = nro
 
 
 # backtest forecasts, rebuilt when the backtest output is there
-bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "bmtx", "xgb"), ".rds")
+bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "bmtx", "xgb", "weather"), ".rds")
 if (all(file.exists(bt_files))) {
   wide <- function(x) x |> select(date, hour, model, forecast) |>
     pivot_wider(names_from = model, values_from = forecast)
   backtest <- readRDS(bt_files[1]) |>
     select(date, hour, actual, lear, naive_mix) |>
     inner_join(select(readRDS(bt_files[2]), date, hour, bmt), by = c("date", "hour")) |>
-    # BMT-X and LEAR-X with what is known before the auction (no wind/solar, published at 18:00)
-    inner_join(wide(filter(readRDS(bt_files[3]), combo == "nb+hol")), by = c("date", "hour")) |>
-    inner_join(wide(readRDS(bt_files[4])), by = c("date", "hour")) |>
+    # the -X models: neighbour prices, holidays and weather forecasts made 48 hours ahead (09b_weather.R)
+    inner_join(wide(readRDS(bt_files[5])), by = c("date", "hour")) |>
+    # plain xgboost (09_xgb.R)
+    inner_join(wide(filter(readRDS(bt_files[4]), model == "xgb")), by = c("date", "hour")) |>
     inner_join(transmute(actual, date = date + 1, hour, naive_day = actual), by = c("date", "hour")) |>
     drop_na() |>
     group_by(date) |>

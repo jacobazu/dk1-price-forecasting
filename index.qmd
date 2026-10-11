@@ -232,7 +232,7 @@ post_txt <- if (!is.null(eval_post) && main %in% eval_post$model) {
   r <- eval_post[eval_post$model == main, ]
   n_sig <- sum(eval_post$dm_p < 0.05 & eval_post$mae_corr < eval_post$mae_raw)
   sprintf(paste("Bias correction (median error of the last %d days): %s mean error %+.1f to %+.1f, MAE %.1f to %.1f (DM %s);",
-                "significant for %d of %d models, so not used live. 80%% band (scaled by last week's volatility): covers %s of hours."),
+                "significant for %d of %d models; not used for the live forecast. 80%% band (scaled by last week's volatility): covers %s of hours."),
           k_bias, text_labels[[main]], r$mean_error_raw, r$mean_error_corr, r$mae_raw, r$mae_corr, p_txt(r$dm_p),
           n_sig, nrow(eval_post), pct(r$coverage))
 } else ""
@@ -276,7 +276,10 @@ bmtx_txt <- if (has_bmtx) {
     "But the wind and solar day-ahead forecasts are published at 18:00 the day before delivery, after the noon auction, ",
     "so those combinations could not have been used for a real bid; they show what that information is worth. ",
     sprintf("With only what is known before the auction (neighbour prices and holidays) the MAE is %.1f, vs %.1f for DK1 prices only.",
-            live$mae, base$mae))
+            live$mae, base$mae),
+    if (has_eval && "bmtx" %in% eval_acc$model)
+      sprintf(" Adding weather forecasts made 48 hours ahead instead (known before the auction), BMT-X reaches %.1f.",
+              eval_acc$mae[eval_acc$model == "bmtx"]) else "")
 } else ""
 
 # battery
@@ -804,10 +807,13 @@ if (has_eval) {
 
 ::: {.card title="How it works"}
 
-**Models.** All use the DK1 prices from D-1, D-2, D-3 and D-7, plus neighbour prices (DE, DK2,
-NO2, SE3, SE4) from D-1 and holidays: the extra data known before the noon auction. Wind and solar
-day-ahead forecasts are published at 18:00, after the auction, so they are only in the study of all 16
-combinations (Variables tab). All are re-estimated every day on the previous two years, on prices
+**Models.** All use the DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices (DE, DK2, NO2,
+SE3, SE4) from D-1, holidays, and weather forecasts made 48 hours ahead
+([Open-Meteo](https://open-meteo.com), wind speed at 100 m at three wind areas through a simple power
+curve, and solar radiation at three solar areas), so everything is known before the noon auction.
+Energinet's own wind and solar forecasts are published at 18:00, after the auction, so they are only
+in the study on the Variables tab. All are re-estimated every day on the previous two years (the
+weather archive starts in March 2024, so the window is shorter until March 2026), on prices
 transformed with asinh((p − median) / MAD).
 
 **BMT-X**, boosting with multiple testing (Kapetanios, Sarafidis & Ventouri), the method from my

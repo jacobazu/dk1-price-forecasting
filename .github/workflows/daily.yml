@@ -49,7 +49,7 @@ jobs:
 
       - uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Update prices and neighbour prices (rolling 2-year window)
+      - name: Update prices, neighbour prices and weather (rolling 2-year window)
         run: Rscript scripts/01_update_live.R
 
       - name: Forecast tomorrow
@@ -69,7 +69,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add forecasts/forecasts_live.csv live/prices_dk1_live.csv live/neighbours_live.csv results/
+          git add forecasts/forecasts_live.csv live/prices_dk1_live.csv live/neighbours_live.csv live/weather_live.csv results/
           # same target day as in 05_forecast_tomorrow.R: tomorrow in danish time
           target=$(TZ=Europe/Copenhagen date -d tomorrow +%F)
           if git diff --cached --quiet -- forecasts/forecasts_live.csv; then

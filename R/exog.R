@@ -60,6 +60,20 @@ dk_holidays <- function(years) {
     arrange(date)
 }
 
+# weather forecasts from open-meteo made 48 hours ahead (07b_download_weather.R), so known
+# before the auction. wind: mean 100 m wind speed of the wind sites through a simple power curve
+# (0 below 3 m/s, full from 12 m/s), solar: mean radiation of the solar sites. days x 24 each
+make_weather <- function(dates, weather) {
+  w <- weather |>
+    transmute(time,
+              ms    = rowMeans(across(starts_with("wind_"))) / 3.6,   # km/h to m/s
+              wpow  = pmin(pmax((ms - 3) / (12 - 3), 0), 1)^3,
+              solar = rowMeans(across(starts_with("solar_"))))
+  wpow  <- to_daily(w, "wpow", dates);  colnames(wpow)  <- paste0("wxwind_d0_h", 0:23)
+  solar <- to_daily(w, "solar", dates); colnames(solar) <- paste0("wxsolar_d0_h", 0:23)
+  cbind(wpow, solar)
+}
+
 # all exogenous candidates, raw (not transformed), per group
 # wind_solar = NULL leaves wind and solar out (the live forecast, see 08_bmtx.R)
 make_exog <- function(dates, neighbours, wind_solar, holidays) {
@@ -104,6 +118,7 @@ transform_exog <- function(exog, train) {
     }),
     wind  = block(exog$wind,  \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
     solar = block(exog$solar, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
-    hol   = exog$hol
+    hol   = exog$hol,
+    wx    = block(exog$wx, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE))
   )
 }

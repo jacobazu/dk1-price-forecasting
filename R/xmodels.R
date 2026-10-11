@@ -17,7 +17,7 @@ x_inputs <- function(features, exog, d, groups, window = 730) {
   list(X = X, keep = keep, med = med, s = s)
 }
 
-bmtx_forecast_day <- function(features, exog, d, groups = c("nb", "hol"), window = 730,
+bmtx_forecast_day <- function(features, exog, d, groups = c("nb", "hol", "wx"), window = 730,
                               pval = 0.05, delta1 = 1, delta2 = 1) {
   inp <- x_inputs(features, exog, d, groups, window)
   D   <- features$X_dow[, -1]   # monday is the baseline
@@ -38,7 +38,7 @@ bmtx_forecast_day <- function(features, exog, d, groups = c("nb", "hol"), window
   })
 }
 
-learx_forecast_day <- function(features, exog, d, groups = c("nb", "hol"), window = 730) {
+learx_forecast_day <- function(features, exog, d, groups = c("nb", "hol", "wx"), window = 730) {
   inp <- x_inputs(features, exog, d, groups, window)
   Xl  <- cbind(inp$X[inp$keep, ], features$X_dow[inp$keep, ])
   xl  <- matrix(c(inp$X[d, ], features$X_dow[d, ]), nrow = 1)
