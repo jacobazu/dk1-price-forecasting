@@ -65,13 +65,15 @@ mae <- function(col) {
 # To add a model later, add its column name, label and colour here.
 model_labels <- c(lear      = "LEAR",
                   bmt       = "BMT",
-                  lear_x    = "LEAR + exogenous",
+                  bmtx      = "BMT-X",
+                  learx     = "LEAR-X",
                   xgb       = "XGBoost",
                   ensemble  = "Ensemble",
                   naive_day = "Naive")
 model_colors <- c(lear      = "#f97316",
                   bmt       = "#2563eb",
-                  lear_x    = "#0ea5e9",
+                  bmtx      = "#7c3aed",
+                  learx     = "#0ea5e9",
                   xgb       = "#16a34a",
                   ensemble  = "#8b5cf6",
                   naive_day = "#9ca3af")
@@ -123,12 +125,14 @@ chart_layout <- function(p, models = NULL, xtitle = "") {
 
 # results from the backtest scripts (results/*.csv), nothing on the dashboard is typed in by hand
 read_res <- function(f) if (file.exists(f)) read_csv(f, show_col_types = FALSE) else NULL
-eval_acc   <- read_res("results/eval_accuracy.csv")    # 08_evaluate.R
+eval_acc   <- read_res("results/eval_accuracy.csv")    # 09_evaluate.R
 eval_tests <- read_res("results/eval_tests.csv")
 eval_bias  <- read_res("results/eval_bias.csv")
 eval_shape <- read_res("results/eval_shape.csv")
 bmt_sel    <- read_res("results/bmt_selection.csv")    # 06_bmt.R
-bat_daily  <- read_res("results/battery_daily.csv")    # 09_battery.R
+bmtx_combo <- read_res("results/bmtx_combos.csv")      # 09_evaluate.R
+bmtx_sel   <- read_res("results/bmtx_selection.csv")   # 08_bmtx.R
+bat_daily  <- read_res("results/battery_daily.csv")    # 10_battery.R
 bat_sum    <- read_res("results/battery_summary.csv")
 bat_tests  <- read_res("results/battery_tests.csv")
 bat_setup  <- read_res("results/battery_setup.csv")
@@ -136,8 +140,10 @@ has_eval    <- !is.null(eval_acc)
 has_battery <- !is.null(bat_sum)
 
 long_labels <- c(perfect = "Perfect foresight", bmt = "BMT", lear = "LEAR",
+                 bmtx = "BMT-X (all groups)", learx = "LEAR-X (all groups)",
                  naive_day = "Naive: same hour yesterday", naive_mix = "Naive: weekly mix")
 text_labels <- c(perfect = "perfect foresight", bmt = "BMT", lear = "LEAR",
+                 bmtx = "BMT-X", learx = "LEAR-X",
                  naive_day = "same hour yesterday", naive_mix = "the weekly mix")
 strat_colors <- c(perfect = "#9ca3af", bmt = "#2563eb", lear = orange,
                   naive_mix = "#0ea5e9", naive_day = grey)
@@ -157,9 +163,9 @@ main  <- if (has_eval) {
 main_label <- model_labels[[main]]
 
 # backtest tile: best model vs naive same hour yesterday
-best_bt    <- if (has_eval) eval_acc$model[!grepl("^naive", eval_acc$model)][1] else NA
-bt_improve <- if (has_eval) paste0("\u2212", round(100 * (1 - eval_acc$rmae[eval_acc$model == best_bt])), "%") else "\u2013"
-bt_label   <- if (has_eval) long_labels[[best_bt]] else ""
+best_bt    <- if (has_eval && main %in% eval_acc$model) main else NA
+bt_improve <- if (!is.na(best_bt)) paste0("\u2212", round(100 * (1 - eval_acc$rmae[eval_acc$model == best_bt])), "%") else "\u2013"
+bt_label   <- if (!is.na(best_bt)) text_labels[[best_bt]] else ""
 
 # tests: find a row for two models in either order
 find_test <- function(tab, a, b) {
@@ -199,6 +205,33 @@ bmt_n_cand  <- if (!is.null(bmt_sel)) n_distinct(bmt_sel$input) else "\u2013"
 eval_period <- if (has_eval) sprintf("%s to %s, %d days, %s hourly forecasts",
                                      format(eval_acc$from[1], "%d %b %Y"), format(eval_acc$to[1], "%d %b %Y"),
                                      eval_acc$n_days[1], prettyNum(eval_acc$n_hours[1], big.mark = ",")) else ""
+
+# BMT-X combinations (variables tab)
+has_bmtx  <- !is.null(bmtx_combo)
+group_txt <- c(nb = "neighbour prices", wind = "wind", solar = "solar", hol = "holidays")
+combo_txt <- function(combo) {
+  if (combo == "prices") return("DK1 prices only")
+  paste("DK1 prices +", paste(group_txt[strsplit(combo, "+", fixed = TRUE)[[1]]], collapse = " + "))
+}
+bmtx_txt <- if (has_bmtx) {
+  best  <- bmtx_combo[1, ]
+  base  <- bmtx_combo[bmtx_combo$combo == "prices", ]
+  n_in  <- sum(bmtx_combo$in_mcs)
+  lx    <- eval_acc[eval_acc$model == "learx", ]
+  bx    <- eval_acc[eval_acc$model == "bmtx", ]
+  t_x   <- if (has_eval) find_test(eval_tests, "bmtx", "learx") else NULL
+  paste0(
+    "The best combination is ", combo_txt(best$combo), " with MAE ", format(round(best$mae, 1), nsmall = 1),
+    sprintf(" (%s%.1f vs DK1 prices only). ", if (best$mae <= base$mae) "\u2212" else "+", abs(best$mae - base$mae)),
+    n_in, " of the ", nrow(bmtx_combo), " combinations are in the 10% model confidence set, ",
+    "so they can't be told apart from the best one. ",
+    if (nrow(lx) == 1 && nrow(bx) == 1 && !is.null(t_x)) {
+      sprintf("With all four groups, BMT-X has MAE %.1f and LEAR-X (lasso on the same variables) %.1f; %s.",
+              bx$mae, lx$mae,
+              if (t_x$dm_p < 0.05) sprintf("the difference is significant (DM %s)", p_txt(t_x$dm_p))
+              else sprintf("the difference is not significant (DM %s)", p_txt(t_x$dm_p)))
+    } else "")
+} else ""
 
 # battery
 bat_val <- function(strategy, col) bat_sum[[col]][bat_sum$strategy == strategy]
@@ -414,6 +447,94 @@ if (nrow(scored) > 0) {
 }
 ```
 
+# Variables
+
+## Row {height=100%}
+
+::: {.card title="Which variables help? Tick the groups to add"}
+
+DK1 prices from D-1, D-2, D-3 and D-7 are always candidates. Each ticked group adds candidates,
+and BMT picks from all of them. Results are from the backtest; every combination is precomputed.
+
+```{r}
+if (has_bmtx) {
+  dat <- bmtx_combo |>
+    left_join(bmtx_sel, by = "combo") |>
+    mutate(rank = row_number(), label = sapply(combo, combo_txt)) |>
+    select(combo, label, rank, mae, rmse, rmae, mcs_p, in_mcs,
+           n_sel, n_prices, n_nb, n_wind, n_solar, n_hol)
+  base_mae <- dat$mae[dat$combo == "prices"]
+  htmltools::HTML(paste0('
+<div class="group-picker">
+  <label><input type="checkbox" value="nb"> Neighbour prices <small>DE, DK2, NO2, SE3, SE4, yesterday</small></label>
+  <label><input type="checkbox" value="wind"> Wind <small>offshore and onshore forecast for tomorrow</small></label>
+  <label><input type="checkbox" value="solar"> Solar <small>forecast for tomorrow</small></label>
+  <label><input type="checkbox" value="hol"> Holidays <small>tomorrow and today</small></label>
+</div>
+<div id="combo-result" class="combo-result"></div>
+<script>
+(function() {
+  var data = ', jsonlite::toJSON(dat, dataframe = "rows", digits = 4), ';
+  var base = ', base_mae, ';
+  var n = data.length;
+  var order = ["nb", "wind", "solar", "hol"];
+  function key() {
+    var on = order.filter(function(g) {
+      return document.querySelector(".group-picker input[value=" + g + "]").checked;
+    });
+    return on.length ? on.join("+") : "prices";
+  }
+  function f(x, d) { return Number(x).toFixed(d); }
+  function render() {
+    var r = data.find(function(x) { return x.combo === key(); });
+    var diff = r.mae - base;
+    var mcs = r.in_mcs
+      ? "<span class=\'tag good\'>in the model confidence set</span> (p = " + f(r.mcs_p, 2) + ")"
+      : "<span class=\'tag\'>not in the model confidence set</span> (p = " + f(r.mcs_p, 3) + ")";
+    document.getElementById("combo-result").innerHTML =
+      "<div class=\'combo-name\'>" + r.label + "</div>" +
+      "<div class=\'combo-stats\'>" +
+      "<div><span>MAE</span><b>" + f(r.mae, 1) + "</b><small>" +
+        (r.combo === "prices" ? "baseline" : (diff <= 0 ? "\u2212" : "+") + f(Math.abs(diff), 1) + " vs prices only") + "</small></div>" +
+      "<div><span>RMSE</span><b>" + f(r.rmse, 1) + "</b><small>\u20ac/MWh</small></div>" +
+      "<div><span>Rank</span><b>" + r.rank + " / " + n + "</b><small>by MAE</small></div>" +
+      "</div>" +
+      "<p>" + mcs + "</p>" +
+      "<p>BMT picks on average " + f(r.n_sel, 1) + " variables per hour: " +
+      f(r.n_prices, 1) + " DK1 prices" +
+      (r.n_nb > 0 || key().indexOf("nb") >= 0 ? ", " + f(r.n_nb, 1) + " neighbour prices" : "") +
+      (r.n_wind > 0 || key().indexOf("wind") >= 0 ? ", " + f(r.n_wind, 1) + " wind" : "") +
+      (r.n_solar > 0 || key().indexOf("solar") >= 0 ? ", " + f(r.n_solar, 1) + " solar" : "") +
+      (r.n_hol > 0 || key().indexOf("hol") >= 0 ? ", " + f(r.n_hol, 1) + " holiday" : "") + ".</p>";
+  }
+  document.querySelectorAll(".group-picker input").forEach(function(i) {
+    i.addEventListener("change", render);
+  });
+  render();
+})();
+</script>'))
+} else {
+  cat("Run scripts/08_bmtx.R and 09_evaluate.R to add the BMT-X results.")
+}
+```
+
+`r bmtx_txt`
+
+:::
+
+```{r}
+#| title: "All 16 combinations, backtest"
+if (has_bmtx) {
+  bmtx_combo |>
+    transmute(Variables          = sapply(combo, combo_txt),
+              `MAE (€/MWh)`      = round(mae, 1),
+              `RMSE (€/MWh)`     = round(rmse, 1),
+              `MCS p`            = p_tab(mcs_p),
+              `In MCS (10%)`     = ifelse(in_mcs, "yes", "")) |>
+    knitr::kable(align = "lrrrr")
+}
+```
+
 # Battery value
 
 ## Row {height=14%}
@@ -456,7 +577,7 @@ if (nrow(scored) > 0) {
 ```{r}
 #| title: "Cumulative battery profit when planning with each forecast (EUR)"
 if (!has_battery) {
-  cat("Run scripts/09_battery.R to add the battery backtest.")
+  cat("Run scripts/10_battery.R to add the battery backtest.")
 } else {
   p3 <- plot_ly(bat_daily, x = ~date)
   for (s in intersect(names(long_labels), names(bat_daily))) {
@@ -566,6 +687,12 @@ of the `r bmt_n_cand` lagged prices per hour.
 **Tests:** DM = Diebold-Mariano on the daily average absolute error (Harvey-Leybourne-Newbold
 correction), GW = Giacomini-White conditional test. Hours = how many of the 24 hours the model is
 significantly better / worse (Holm corrected).
+
+**BMT-X / LEAR-X:** the same models with extra candidate variables: neighbour prices from
+yesterday, wind and solar day-ahead forecasts for tomorrow, and holidays. BMT-X is run for all 16
+combinations of these groups; LEAR-X uses all of them. The model confidence set (Hansen, Lunde &
+Nason) keeps the combinations whose daily loss can't be told apart from the best one at 10%
+(7-day block bootstrap).
 
 **Bias table:** mean error above 0 means the forecast is too low on average. Mincer-Zarnowitz
 regresses the actual price on the forecast; a slope above 1 means the forecast moves too little,

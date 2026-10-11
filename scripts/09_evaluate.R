@@ -1,7 +1,8 @@
 # evaluation of the backtest forecasts, all models on the same hours
 # accuracy (mae, rmse, rmae), diebold-mariano and giacomini-white tests,
-# bias (mincer-zarnowitz) and shape of the day (cheapest / most expensive hour)
-# needs forecasts_lear.rds (04_lear.R) and forecasts_bmt.rds (06_bmt.R)
+# bias (mincer-zarnowitz), shape of the day (cheapest / most expensive hour),
+# and a model confidence set over the 16 BMT-X combinations
+# needs forecasts_lear.rds (04_lear.R), forecasts_bmt.rds (06_bmt.R) and forecasts_bmtx.rds (08_bmtx.R)
 # writes small csv files to results/ that the dashboard reads
 
 library(dplyr)
@@ -23,14 +24,23 @@ fc <- readRDS("data/processed/forecasts_lear.rds") |>
   select(date, hour, actual, lear, naive_mix) |>
   inner_join(select(readRDS("data/processed/forecasts_bmt.rds"), date, hour, bmt),
              by = c("date", "hour")) |>
-  inner_join(naive_day, by = c("date", "hour")) |>
+  inner_join(naive_day, by = c("date", "hour"))
+
+# BMT-X and LEAR-X with all four groups as extra models
+bmtx <- readRDS("data/processed/forecasts_bmtx.rds")
+all_groups <- "nb+wind+solar+hol"
+fc <- fc |>
+  inner_join(bmtx |> filter(combo == all_groups) |>
+               select(date, hour, model, forecast) |>
+               pivot_wider(names_from = model, values_from = forecast),
+             by = c("date", "hour")) |>
   drop_na() |>
   group_by(date) |>
   filter(n() == 24) |>
   ungroup() |>
   arrange(date, hour)
 
-models <- c("bmt", "lear", "naive_day", "naive_mix")
+models <- c("bmtx", "learx", "bmt", "lear", "naive_day", "naive_mix")
 cat("evaluation period:", format(min(fc$date)), "to", format(max(fc$date)),
     "-", n_distinct(fc$date), "days,", nrow(fc), "hours\n")
 
@@ -154,8 +164,71 @@ shape <- bind_rows(lapply(models, \(m) {
 print(shape)
 
 
+# model confidence set (hansen, lunde & nason 2011) over the 16 BMT-X combinations, LEAR-X and LEAR
+# loss = daily average absolute error, Tmax statistic, circular block bootstrap with 7-day blocks.
+# the set at 10% = the combinations that can't be told apart from the best one
+mcs <- function(L, B = 2000, block = 7, seed = 1) {
+  set.seed(seed)
+  n <- nrow(L)
+  idx <- replicate(B, {
+    starts <- sample.int(n, ceiling(n / block), replace = TRUE)
+    (as.vector(outer(0:(block - 1), starts, "+")) - 1) %% n + 1
+  })[1:n, ]
+  boot_means_all <- apply(idx, 2, \(i) colMeans(L[i, , drop = FALSE]))   # models x B
+
+  alive <- colnames(L)
+  p_run <- 0
+  out   <- tibble(model = character(), mcs_p = numeric())
+  while (length(alive) > 1) {
+    lbar  <- colMeans(L[, alive, drop = FALSE])
+    d_i   <- lbar - mean(lbar)
+    bm    <- boot_means_all[alive, , drop = FALSE]
+    bd_i  <- sweep(bm, 2, colMeans(bm))                    # bootstrap d_i
+    v_i   <- rowMeans((bd_i - d_i)^2)
+    t_i   <- d_i / sqrt(v_i)
+    t_max <- max(t_i)
+    boot  <- apply((bd_i - d_i) / sqrt(v_i), 2, max)
+    p_run <- max(p_run, mean(boot >= t_max))
+    worst <- alive[which.max(t_i)]
+    out   <- bind_rows(out, tibble(model = worst, mcs_p = p_run))
+    alive <- setdiff(alive, worst)
+  }
+  bind_rows(out, tibble(model = alive, mcs_p = 1))
+}
+
+combo_fc <- bmtx |>
+  semi_join(fc, by = c("date", "hour")) |>
+  mutate(name = if_else(model == "bmtx", paste0("bmtx:", combo), "learx")) |>
+  select(date, hour, name, forecast, actual)
+L <- bind_rows(combo_fc,
+               fc |> transmute(date, hour, name = "lear", forecast = lear, actual)) |>
+  group_by(date, name) |>
+  summarise(loss = mean(abs(actual - forecast)), .groups = "drop") |>
+  pivot_wider(names_from = name, values_from = loss) |>
+  select(-date) |>
+  as.matrix()
+mcs_res <- mcs(L)
+
+combo_tab <- combo_fc |>
+  filter(startsWith(name, "bmtx:")) |>
+  group_by(name) |>
+  summarise(mae = mean(abs(actual - forecast)), rmse = sqrt(mean((actual - forecast)^2)),
+            .groups = "drop") |>
+  mutate(rmae  = mae / mae_naive,
+         combo = sub("^bmtx:", "", name)) |>
+  left_join(mcs_res, by = c("name" = "model")) |>
+  mutate(nb    = grepl("nb", combo), wind = grepl("wind", combo),
+         solar = grepl("solar", combo), hol = grepl("hol", combo),
+         in_mcs = mcs_p >= 0.10) |>
+  select(combo, nb, wind, solar, hol, mae, rmse, rmae, mcs_p, in_mcs) |>
+  arrange(mae)
+print(combo_tab, n = Inf)
+print(mcs_res, n = Inf)
+
 dir.create("results", showWarnings = FALSE)
 write_csv(accuracy, "results/eval_accuracy.csv")
 write_csv(tests,    "results/eval_tests.csv")
 write_csv(bias,     "results/eval_bias.csv")
 write_csv(shape,    "results/eval_shape.csv")
+write_csv(combo_tab, "results/bmtx_combos.csv")
+write_csv(mcs_res,  "results/mcs.csv")

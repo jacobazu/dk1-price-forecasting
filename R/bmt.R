@@ -84,3 +84,36 @@ bmt_forecast_day <- function(features, d, window = 730, pval = 0.05, delta1 = 1,
 
   if (return_selected) list(forecast = fc, selected = selected) else fc
 }
+
+
+# same selection again, but starting from candidates and y that already have the controls
+# (intercept + weekday dummies) taken out: E = residual candidates, ey = residual y,
+# df0 = rows minus rank of the controls, ss0 = centred sum of squares of the raw candidates.
+# after each selection the selected column is taken out of all others (gram-schmidt),
+# so the controls only have to be removed once per day, used for the 16 BMT-X combinations
+bmt_select_resid <- function(E, ey, df0, ss0, pval = 0.05, delta1 = 1, delta2 = 1) {
+  N   <- ncol(E)
+  thr <- c(qnorm(1 - (pval / N^(delta1 - 1)) / (2 * N)),
+           qnorm(1 - (pval / N^(delta2 - 1)) / (2 * N)))
+  sel <- integer(0)
+
+  repeat {
+    sxx <- colSums(E^2)
+    sxy <- drop(crossprod(E, ey))
+    df  <- df0 - length(sel) - 1
+    ssr <- sum(ey^2) - sxy^2 / sxx
+    t   <- abs(sxy) / sqrt(sxx * ssr / df)
+    t[sel] <- NA
+    t[sxx < 1e-12 * ss0 | sxx == 0] <- NA
+    if (all(is.na(t))) break
+
+    j <- which.max(t)
+    if (t[j] <= thr[if (length(sel) == 0) 1 else 2]) break
+    sel <- c(sel, j)
+    e   <- E[, j]
+    ee  <- sum(e^2)
+    E   <- E - outer(e, drop(crossprod(e, E)) / ee)
+    ey  <- ey - e * sum(e * ey) / ee
+  }
+  sel
+}

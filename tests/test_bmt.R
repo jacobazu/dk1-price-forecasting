@@ -43,4 +43,20 @@ if (file.exists("data/processed/prices_dk1_hourly.rds")) {
 }
 
 stopifnot(all(ok))
+
+# bmt_select_resid (used for BMT-X) gives the same selection as bmt_select
+set.seed(2)
+ok_resid <- sapply(1:20, \(i) {
+  Tn <- 300; N <- 60
+  X  <- matrix(rnorm(Tn * N), Tn, N) + rnorm(Tn) * 0.5
+  Xc <- matrix(rnorm(Tn * 3), Tn, 3)
+  y  <- drop(1 + X[, 2] - 0.6 * X[, 7] + 0.3 * X[, 30] + Xc %*% c(0.3, -0.2, 0.1) + rnorm(Tn))
+  q  <- qr(cbind(1, Xc))
+  a  <- bmt_select(y, X, Xc)
+  b  <- seq_len(N) %in% bmt_select_resid(qr.resid(q, X), qr.resid(q, y), Tn - q$rank,
+                                          colSums(scale(X, scale = FALSE)^2))
+  identical(a, b)
+})
+cat("residual version:", sum(ok_resid), "of", length(ok_resid), "identical\n")
+stopifnot(all(ok_resid))
 cat("all good\n")
