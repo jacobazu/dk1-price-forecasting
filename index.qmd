@@ -25,6 +25,7 @@ library(lubridate)
 library(plotly)
 source("R/battery.R")
 source("R/postprocess.R")
+source("R/quantiles.R")
 source("R/forecasts.R")   # add_ensembles()
 
 Sys.setlocale("LC_TIME", "C")   # english dates
@@ -152,6 +153,8 @@ bat_tests  <- read_res("results/battery_tests.csv")
 bat_setup  <- read_res("results/battery_setup.csv")
 mcs_models <- read_res("results/mcs_models.csv")       # 10_evaluate.R
 xgb_tun    <- read_res("results/xgb_tuning.csv")       # 09_xgb.R
+prob_sc    <- read_res("results/prob_scores.csv")      # 10_evaluate.R
+prob_cal   <- read_res("results/prob_calibration.csv") # 10_evaluate.R
 has_eval    <- !is.null(eval_acc)
 has_battery <- !is.null(bat_sum)
 
@@ -186,6 +189,8 @@ best_bt    <- if (has_eval && main %in% eval_acc$model) main else best_all
 bt_improve <- if (!is.na(best_bt)) paste0("\u2212", round(100 * (1 - eval_acc$rmae[eval_acc$model == best_bt])), "%") else "\u2013"
 bt_label   <- if (is.na(best_bt)) "" else if (best_bt == main) cap(sub("^the ", "", text_labels[[best_bt]])) else
   paste(cap(sub("^the ", "", text_labels[[best_bt]])), "(from the next forecast)")
+# method page model
+eval_main  <- if (has_eval && main %in% eval_acc$model) main else best_all
 live_txt   <- if (has_eval && !has_spot) {
   sprintf("The forecast shown for %s is from %s, an earlier model, because it was saved before the -X models ran live.",
           format(latest, "%a %d %b"), text_labels[[main]])
@@ -225,19 +230,18 @@ sig_txt <- if (has_eval && nrow(filter(eval_acc, !grepl("^naive", model))) >= 2)
 } else ""
 
 # bias and band text
-post_txt <- if (!is.null(eval_post) && main %in% eval_post$model) {
-  r <- eval_post[eval_post$model == main, ]
+post_txt <- if (!is.null(eval_post) && eval_main %in% eval_post$model) {
+  r <- eval_post[eval_post$model == eval_main, ]
   n_sig <- sum(eval_post$dm_p < 0.05 & eval_post$mae_corr < eval_post$mae_raw)
   med_txt <- sprintf(paste("Bias correction (median error of the last %d days): %s mean error %+.1f to %+.1f, MAE %.1f to %.1f (DM %s);",
                            "significant for %d of %d models; not used for the live forecast."),
-                     k_bias, text_labels[[main]], r$mean_error_raw, r$mean_error_corr, r$mae_raw, r$mae_corr, p_txt(r$dm_p),
+                     k_bias, text_labels[[eval_main]], r$mean_error_raw, r$mean_error_corr, r$mae_raw, r$mae_corr, p_txt(r$dm_p),
                      n_sig, nrow(eval_post))
   mz_txt <- if ("mae_mz" %in% names(r)) {
     sprintf("Mincer-Zarnowitz correction (a + b × forecast on the same %d days): MAE %.1f, %s than the median shift (DM %s).",
             k_bias, r$mae_mz, if (r$mae_mz < r$mae_corr) "better" else "worse", p_txt(r$dm_p_mz_med))
   } else ""
-  band_txt <- sprintf("80%% band (scaled by last week's volatility): covers %s of hours.", pct(r$coverage))
-  paste(med_txt, mz_txt, band_txt)
+  paste(med_txt, mz_txt)
 } else ""
 
 xgb_txt <- if (!is.null(xgb_tun) && any(xgb_tun$chosen)) {
@@ -332,25 +336,73 @@ bat_txt <- if (has_battery) {
   paste(paste0(toupper(substring(parts, 1, 1)), substring(parts, 2)), collapse = " ")
 } else ""
 
-# 80% band for tomorrow
-vol_now <- vol_scale(bind_rows(actual, if (!is.null(backtest)) select(backtest, date, hour, actual)),
-                     seq(latest - k_int - 1, latest, by = "day"))
-past_errors <- function(m) {
+# ranges for tomorrow
+q_method <- function(m) {
+  r <- if (!is.null(prob_sc)) prob_sc[prob_sc$model == m & prob_sc$chosen, ] else NULL
+  if (is.null(r) || nrow(r) == 0) "aci" else r$method[1]
+}
+all_prices <- bind_rows(actual, if (!is.null(backtest)) select(backtest, date, hour, actual))
+past_fc <- function(m) {
   bt <- if (!is.null(backtest) && m %in% names(backtest)) select(backtest, date, hour, actual, f = all_of(m)) else NULL
   lv <- if (m %in% names(fc)) fc |> filter(date < latest, !is.na(.data[[m]])) |>
     select(date, hour, f = all_of(m)) |> inner_join(actual, by = c("date", "hour")) else NULL
-  bind_rows(lv, bt) |>
-    distinct(date, hour, .keep_all = TRUE) |>
-    transmute(date, hour, e = actual - f) |>
-    left_join(vol_now, by = "date")
+  bind_rows(lv, bt) |> distinct(date, hour, .keep_all = TRUE)
 }
-bands <- lapply(setNames(models, models), \(m) {
-  b <- adjust_day(past_errors(m), latest, vol_now$s[vol_now$date == latest])
-  if (is.null(b)) return(NULL)
-  tomorrow |> select(hour, f = all_of(m)) |> inner_join(b, by = "hour") |>
-    mutate(lower = f + lo_s, upper = f + hi_s)
+fans <- lapply(setNames(models, models), \(m) {
+  if (m == "naive_mix" || !m %in% names(tomorrow) || all(is.na(tomorrow[[m]]))) return(NULL)
+  x  <- bind_rows(transmute(past_fc(m), date, hour, e = actual - f),
+                  tibble(date = latest, hour = 0:23, e = NA_real_))
+  em <- err_matrix(x)
+  q  <- quantile_offsets(em$dates, em$E, vol_scale(all_prices, em$dates)$s) |>
+    filter(date == latest, method == q_method(m))
+  if (nrow(q) == 0) return(NULL)
+  tomorrow |> select(hour, f = all_of(m)) |> inner_join(q, by = "hour") |> mutate(q = f + off)
 })
-band_cov <- function(m) if (!is.null(eval_post) && m %in% eval_post$model) eval_post$coverage[eval_post$model == m] else NA
+fan_wide <- function(m) {
+  out <- tibble(hour = 0:23, q0.05 = NA_real_, q0.25 = NA_real_, q0.75 = NA_real_, q0.95 = NA_real_)
+  if (is.null(fans[[m]])) return(out)
+  fans[[m]] |>
+    filter(tau %in% c(0.05, 0.25, 0.75, 0.95)) |>
+    select(hour, tau, q) |>
+    tidyr::pivot_wider(names_from = tau, values_from = q, names_prefix = "q")
+}
+
+# chance of a negative price
+neg <- if (!is.null(fans[[main]])) {
+  fans[[main]] |>
+    group_by(hour) |>
+    summarise(p = prob_below(sort(q), tau[order(q)]), .groups = "drop")
+} else NULL
+neg_pct <- function(p) if (p <= 0) "<5%" else if (p >= 1) ">95%" else paste0(round(100 * p), "%")
+neg_val <- if (is.null(neg)) "\u2013" else neg_pct(max(neg$p))
+neg_sub <- if (is.null(neg)) "no range yet" else if (max(neg$p) <= 0) "below 5% in every hour" else
+  sprintf("highest at %s", hour_label(neg$hour[which.max(neg$p)]))
+
+# range text and tables
+q_lab   <- function(m) q_methods[[m]]
+q_low   <- function(m) paste0(tolower(substring(q_lab(m), 1, 1)), substring(q_lab(m), 2))
+prob_m  <- if (!is.null(prob_sc)) prob_sc[prob_sc$model == eval_main, ] else NULL
+has_prob <- !is.null(prob_m) && nrow(prob_m) > 0
+prob_txt <- if (has_prob) {
+  ch  <- prob_m[prob_m$chosen, ]
+  bst <- prob_m[prob_m$method == ch$best, ]
+  n_cal <- if ("calibrated" %in% names(prob_m)) sum(prob_m$calibrated) else 0
+  why <- if (n_cal == 0) "no method is on target, so the best calibrated is shown" else
+    if (n_cal == 1) "its ranges are the only ones not significantly off target" else
+    "it has the lowest pinball loss of the methods whose ranges are on target"
+  alt <- if (ch$method != ch$best) sprintf(" %s: lower pinball loss (DM %s), but its 90%% range covers only %s.",
+                                           q_lab(ch$best), p_txt(ch$dm_p), pct(bst$cov90)) else ""
+  sprintf(paste("Shown: %s, because %s.%s For %s the shown 90%% range covered %s of hours (target 90%%, %s)",
+                "and the 50%% range %s (target 50%%, %s), over %d days."),
+          q_low(ch$method), why, alt, text_labels[[eval_main]], pct(ch$cov90), p_txt(ch$cov90_p),
+          pct(ch$cov50), p_txt(ch$cov50_p), ch$days)
+} else ""
+live_cov <- if (has_prob) prob_m[prob_m$chosen, ] else NULL
+live_cov_lab <- if (has_prob) model_labels[[eval_main]] else main_label
+live_cov_val <- if (!is.null(live_cov) && live_cov$days_live > 0) pct(live_cov$cov90_live) else "\u2013"
+live_cov_sub <- if (!is.null(live_cov) && live_cov$days_live > 0)
+  sprintf("of hours in the 90%% range, %d live %s", live_cov$days_live, if (live_cov$days_live == 1) "day" else "days") else
+  "starts after the first forecast day"
 rgba <- function(hex, a) { v <- grDevices::col2rgb(hex); sprintf("rgba(%d,%d,%d,%.2f)", v[1], v[2], v[3], a) }
 
 # forecast tiles
@@ -409,22 +461,22 @@ bat_desc <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip ef
 ::: {.card}
 <div class="kpi" style="--accent: #16a34a">
 <div>
-<div class="kpi-label">Cheapest hour</div>
-<div class="kpi-value">`r hour_label(cheap$hour)`</div>
-<div class="kpi-sub">`r eur(cheap[[main]])` €/MWh</div>
+<div class="kpi-label">Cheapest / most expensive hour</div>
+<div class="kpi-value">`r hour_label(cheap$hour)` / `r hour_label(peak$hour)`</div>
+<div class="kpi-sub">`r eur(cheap[[main]])` / `r eur(peak[[main]])` €/MWh</div>
 </div>
-<div class="kpi-icon"><i class="bi bi-arrow-down-circle-fill"></i></div>
+<div class="kpi-icon"><i class="bi bi-arrow-down-up"></i></div>
 </div>
 :::
 
 ::: {.card}
 <div class="kpi" style="--accent: #dc2626">
 <div>
-<div class="kpi-label">Most expensive hour</div>
-<div class="kpi-value">`r hour_label(peak$hour)`</div>
-<div class="kpi-sub">`r eur(peak[[main]])` €/MWh</div>
+<div class="kpi-label">Chance of a negative price</div>
+<div class="kpi-value">`r neg_val`</div>
+<div class="kpi-sub">`r neg_sub`</div>
 </div>
-<div class="kpi-icon"><i class="bi bi-arrow-up-circle-fill"></i></div>
+<div class="kpi-icon"><i class="bi bi-arrow-down-circle-fill"></i></div>
 </div>
 :::
 
@@ -458,25 +510,30 @@ fc_models <- setdiff(models, "naive_mix")
 fc_models <- c(main, setdiff(fc_models, main))   # open on main model
 
 for (m in fc_models) {
-  b <- bands[[m]]
-  if (is.null(b)) b <- tibble(hour = 0:23, lower = NA_real_, upper = NA_real_)
-  cov_txt <- if (is.na(band_cov(m))) "" else sprintf(", covered %s of hours so far", pct(band_cov(m)))
+  d <- tomorrow |> select(hour, f = all_of(m)) |> left_join(fan_wide(m), by = "hour") |>
+    mutate(range90 = ifelse(is.na(q0.05), "", sprintf(", 90%%: %.0f to %.0f", q0.05, q0.95)))
+  col <- model_colors[[m]]
+  vis <- m == fc_models[1]
   p <- p |>
-    add_lines(data = b, x = ~hour, y = ~lower, line = list(width = 0), showlegend = FALSE,
-              visible = (m == fc_models[1]), hoverinfo = "skip") |>
-    add_lines(data = b, x = ~hour, y = ~upper, line = list(width = 0), fill = "tonexty",
-              fillcolor = rgba(model_colors[[m]], 0.15),
-              name = paste0("80% band from the last ", k_int, " days' errors, scaled by last week's volatility", cov_txt),
-              visible = (m == fc_models[1]), hoverinfo = "skip") |>
-    add_lines(data = tomorrow, x = ~hour, y = tomorrow[[m]],
+    add_lines(data = d, x = ~hour, y = ~q0.05, line = list(width = 0), showlegend = FALSE,
+              visible = vis, hoverinfo = "skip") |>
+    add_lines(data = d, x = ~hour, y = ~q0.95, line = list(width = 0), fill = "tonexty",
+              fillcolor = rgba(col, 0.12), name = paste0("90% range (", q_low(q_method(m)), ")"),
+              visible = vis, hoverinfo = "skip") |>
+    add_lines(data = d, x = ~hour, y = ~q0.25, line = list(width = 0), showlegend = FALSE,
+              visible = vis, hoverinfo = "skip") |>
+    add_lines(data = d, x = ~hour, y = ~q0.75, line = list(width = 0), fill = "tonexty",
+              fillcolor = rgba(col, 0.25), name = "50% range",
+              visible = vis, hoverinfo = "skip") |>
+    add_lines(data = d, x = ~hour, y = ~f, text = ~range90,
               name = paste0(model_labels[[m]], " forecast ", format(latest, "%a %d %b"),
                             ", made ", format(made_dk, "%a %d %b %H:%M")),
-              visible = (m == fc_models[1]),
-              line = list(color = model_colors[[m]], width = 3),
-              hovertemplate = paste0("%{y:.1f} €/MWh<extra>", model_labels[[m]], "</extra>"))
+              visible = vis,
+              line = list(color = col, width = 3),
+              hovertemplate = paste0("%{y:.1f} €/MWh%{text}<extra>", model_labels[[m]], "</extra>"))
 }
 
-p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_model = 3) |> layout(xaxis = list(dtick = 3))
+p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_model = 5) |> layout(xaxis = list(dtick = 3))
 ```
 
 # Track record
@@ -516,6 +573,17 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_mod
 </div>
 :::
 
+::: {.card}
+<div class="kpi" style="--accent: #c2410c">
+<div>
+<div class="kpi-label">`r live_cov_lab` 90% range, live</div>
+<div class="kpi-value">`r live_cov_val`</div>
+<div class="kpi-sub">`r live_cov_sub`</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-distribute-vertical"></i></div>
+</div>
+:::
+
 ## Row {height=56%}
 
 ```{r}
@@ -546,18 +614,18 @@ if (nrow(scored) == 0) {
 
 ```{r}
 #| title: "Accuracy by model, last 30 days"
-if (nrow(scored) > 0) {
-  lapply(models, \(m) {
-    s <- scored[!is.na(scored[[m]]), ]
-    if (nrow(s) == 0) return(NULL)
-    tibble(Model            = model_labels[[m]],
-           `Days tracked`   = n_distinct(s$date),
-           `MAE (€/MWh)`    = mean(abs(s$actual - s[[m]])),
-           `RMSE (€/MWh)`   = sqrt(mean((s$actual - s[[m]])^2)))
-  }) |>
-    bind_rows() |>
-    arrange(`MAE (€/MWh)`) |>
-    knitr::kable(digits = 1)
+acc_live <- bind_rows(lapply(models, \(m) {
+  s <- scored[!is.na(scored[[m]]), ]
+  if (nrow(s) == 0) return(NULL)
+  tibble(Model            = model_labels[[m]],
+         `Days tracked`   = n_distinct(s$date),
+         `MAE (€/MWh)`    = mean(abs(s$actual - s[[m]])),
+         `RMSE (€/MWh)`   = sqrt(mean((s$actual - s[[m]])^2)))
+}))
+if (nrow(acc_live) > 0) {
+  acc_live |> arrange(`MAE (€/MWh)`) |> knitr::kable(digits = 1)
+} else {
+  cat("Starts once a forecast day of these models has passed.")
 }
 ```
 
@@ -743,9 +811,9 @@ No fees, no battery wear, hourly instead of 15-minute trading.
 
 :::
 
-# Method
+# Method {scrolling="true"}
 
-## Row {height=40%}
+## Row {height=450px}
 
 ```{r}
 #| title: "Accuracy"
@@ -783,7 +851,40 @@ if (has_eval) {
 
 :::
 
-## Row {height=60%}
+## Row {height=440px}
+
+::: {.card title="Ranges: how honest are the probabilities?"}
+
+```{r}
+#| output: asis
+tab_attr <- 'class="table table-sm table-striped small"'
+if (has_prob) {
+  tab1 <- prob_m |>
+    arrange(pinball) |>
+    transmute(Method                = unname(q_methods[method]),
+              Pinball               = round(pinball, 2),
+              `DM p vs best`        = ifelse(is.na(dm_p), "best", p_tab(dm_p)),
+              `50% range covers`    = pct(cov50),
+              `90% range covers`    = pct(cov90),
+              `90% width (€/MWh)`   = round(width90, 1),
+              `Calibration error`   = round(cal_error, 3),
+              Shown                 = ifelse(chosen, "yes", ""))
+  cat(knitr::kable(tab1, format = "html", align = "lrrrrrrr", table.attr = tab_attr))
+  cat("\n\n", prob_txt, "\n\n", sep = "")
+  if (!is.null(prob_cal)) {
+    tab2 <- prob_cal |>
+      filter(model == eval_main, tau %in% c(0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95)) |>
+      mutate(tau = paste0(round(100 * tau), "%"), below = pct(below)) |>
+      tidyr::pivot_wider(names_from = tau, values_from = below) |>
+      transmute(`Share of prices below the quantile` = unname(q_methods[method]), across(ends_with("%")))
+    cat(knitr::kable(tab2, format = "html", align = "lrrrrrrr", table.attr = tab_attr))
+  }
+}
+```
+
+:::
+
+## Row {height=720px}
 
 ::: {.card title="Is the difference significant?"}
 
@@ -842,6 +943,15 @@ models that can't be told apart from the best one.
 (MZ p tests intercept 0 and slope 1, Newey-West). Two corrections are tested, both from the last 28
 days only: adding the median error, and a + b × forecast from the Mincer-Zarnowitz regression
 (Theil's optimal linear correction).
+
+**Ranges:** quantiles from 5% to 95% from the last 60 days' errors of each model, per hour, in three
+ways: the plain error quantiles; the same scaled by last week's volatility; and adaptive (after Gibbs &
+Candès 2021), which also nudges the quantile levels each day after it sees whether the prices fell
+below them. Scored with the pinball loss (average over the 19 levels, lower is better). Calibration
+error = average distance between the level and the share of prices below it. Calibration first, then
+sharpness (Gneiting, Balabdaoui & Raftery 2007): the method shown has the lowest pinball loss among
+those whose 50% and 90% ranges are not significantly off target (t test on the daily coverage).
+The chance of a negative price is read off the same quantiles.
 
 **Live:** each forecast is saved before the noon auction the day before, with the time it was made,
 and never changed. After noon nothing is saved.

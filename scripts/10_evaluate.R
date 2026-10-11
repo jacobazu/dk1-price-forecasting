@@ -9,6 +9,7 @@ source("R/lear.R")
 source("R/mcs.R")
 source("R/forecasts.R")
 source("R/postprocess.R")
+source("R/quantiles.R")
 
 # models on the dashboard
 models <- c("ensemble", "bmtx", "learx", "xgbx", "naive_mix")
@@ -180,11 +181,10 @@ mcs_models <- mcs(L_models) |>
   mutate(in_mcs = mcs_p >= 0.10)
 print(mcs_models)
 
-# bias correction and bands
+# bias correction
 # mz vs raw and median
-scale <- vol_scale(bind_rows(select(fc, date, hour, actual), actual), sort(unique(fc$date)))
 post <- bind_rows(lapply(setdiff(models, "naive_mix"), \(m) {
-  x  <- postprocess(fc, m, scale)
+  x  <- postprocess(fc, m)
   dl <- x |>
     group_by(date) |>
     summarise(raw = mean(abs(actual - forecast)),
@@ -193,25 +193,13 @@ post <- bind_rows(lapply(setdiff(models, "naive_mix"), \(m) {
   dm        <- dm_test(dl$med - dl$raw)
   dm_mz     <- dm_test(dl$mz - dl$raw)
   dm_mz_med <- dm_test(dl$mz - dl$med)
-  tibble(model        = m,
-         days         = n_distinct(x$date),
-         mae_raw      = mean(abs(x$actual - x$forecast)),
-         mae_corr     = mean(abs(x$actual - x$corrected)),
-         dm_p         = dm[["p"]],
+  tibble(model           = m,
+         days            = n_distinct(x$date),
+         mae_raw         = mean(abs(x$actual - x$forecast)),
+         mae_corr        = mean(abs(x$actual - x$corrected)),
+         dm_p            = dm[["p"]],
          mean_error_raw  = mean(x$actual - x$forecast),
          mean_error_corr = mean(x$actual - x$corrected),
-         coverage     = mean(x$actual >= x$lower_s & x$actual <= x$upper_s),   # scaled band (shown)
-         below        = mean(x$actual < x$lower_s),
-         above        = mean(x$actual > x$upper_s),
-         width        = mean(x$upper_s - x$lower_s),
-         coverage_plain = mean(x$actual >= x$lower & x$actual <= x$upper),   # without scaling
-         width_plain    = mean(x$upper - x$lower),
-         # interval score, lower is better
-         score        = mean((x$upper_s - x$lower_s) + 2 / (1 - diff(q_probs)) *
-                               (pmax(x$lower_s - x$actual, 0) + pmax(x$actual - x$upper_s, 0))),
-         score_plain  = mean((x$upper - x$lower) + 2 / (1 - diff(q_probs)) *
-                               (pmax(x$lower - x$actual, 0) + pmax(x$actual - x$upper, 0))),
-         nominal      = diff(q_probs),
          mae_mz          = mean(abs(x$actual - x$corrected_mz)),
          mean_error_mz   = mean(x$actual - x$corrected_mz),
          dm_p_mz         = dm_mz[["p"]],
@@ -220,6 +208,78 @@ post <- bind_rows(lapply(setdiff(models, "naive_mix"), \(m) {
 }))
 print(post)
 write_csv(post, "results/eval_post.csv")
+
+
+# quantile forecasts (R/quantiles.R)
+real  <- setdiff(models, "naive_mix")
+scale <- vol_scale(bind_rows(select(fc, date, hour, actual), actual), sort(unique(fc$date)))
+qf <- bind_rows(lapply(real, \(m) {
+  em <- err_matrix(transmute(fc, date, hour, e = actual - .data[[m]]))
+  quantile_offsets(em$dates, em$E, scale$s[match(em$dates, scale$date)]) |>
+    mutate(model = m)
+})) |>
+  inner_join(fc |>
+               select(date, hour, source, actual, all_of(real)) |>
+               pivot_longer(all_of(real), names_to = "model", values_to = "forecast"),
+             by = c("model", "date", "hour")) |>
+  mutate(q = forecast + off, below = actual < q, loss = pinball(actual, q, tau))
+
+# per day: pinball, coverage, width
+q_day <- qf |>
+  filter(tau %in% c(0.05, 0.25, 0.75, 0.95)) |>
+  select(model, method, date, hour, source, actual, tau, q) |>
+  pivot_wider(names_from = tau, values_from = q, names_prefix = "q") |>
+  group_by(model, method, date, source) |>
+  summarise(in50 = mean(actual >= q0.25 & actual <= q0.75),
+            in90 = mean(actual >= q0.05 & actual <= q0.95),
+            w50  = mean(q0.75 - q0.25),
+            w90  = mean(q0.95 - q0.05), .groups = "drop") |>
+  inner_join(qf |>
+               group_by(model, method, date) |>
+               summarise(pinball = mean(loss), .groups = "drop"),
+             by = c("model", "method", "date")) |>
+  arrange(model, method, date)
+
+# share below each quantile
+calib <- qf |>
+  group_by(model, method, tau) |>
+  summarise(below = mean(below), .groups = "drop")
+
+# coverage p: daily t test
+# chosen: calibrated first, then pinball
+prob <- q_day |>
+  group_by(model, method) |>
+  summarise(days       = n(),
+            pinball    = mean(pinball),
+            cov50      = mean(in50),
+            cov90      = mean(in90),
+            width50    = mean(w50),
+            width90    = mean(w90),
+            cov50_p    = dm_test(in50 - 0.5)[["p"]],
+            cov90_p    = dm_test(in90 - 0.9)[["p"]],
+            days_live  = sum(source == "live"),
+            cov50_live = if (days_live > 0) mean(in50[source == "live"]) else NA_real_,
+            cov90_live = if (days_live > 0) mean(in90[source == "live"]) else NA_real_,
+            .groups = "drop") |>
+  inner_join(calib |>
+               group_by(model, method) |>
+               summarise(cal_error = mean(abs(below - tau)), .groups = "drop"),
+             by = c("model", "method")) |>
+  group_by(model) |>
+  mutate(best = method[which.min(pinball)],
+         dm_p = sapply(method, \(me) {
+           if (me == best[1]) return(NA_real_)
+           a <- q_day$pinball[q_day$model == model[1] & q_day$method == me]
+           b <- q_day$pinball[q_day$model == model[1] & q_day$method == best[1]]
+           dm_test(a - b)[["p"]]
+         }),
+         calibrated = cov50_p >= 0.05 & cov90_p >= 0.05,
+         chosen = if (any(calibrated)) method == method[calibrated][which.min(pinball[calibrated])]
+                  else method == method[which.min(cal_error)]) |>
+  ungroup()
+print(prob)
+write_csv(prob,  "results/prob_scores.csv")
+write_csv(calib, "results/prob_calibration.csv")
 
 write_csv(accuracy, "results/eval_accuracy.csv")
 write_csv(tests,    "results/eval_tests.csv")

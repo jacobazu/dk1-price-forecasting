@@ -37,7 +37,8 @@ Backtest from 1 October 2025 to 10 October 2026 (375 days), all models on the sa
 
 The ensemble is significantly more accurate than each of the single models (Diebold-Mariano,
 p < 0.001). The dashboard also has Giacomini-White tests, a model confidence set, bias checks,
-80% prediction bands, and a battery backtest where a 2 MWh battery plans each day with each forecast.
+probabilistic forecasts (5–95% quantiles, three methods compared), and a battery backtest where a
+2 MWh battery plans each day with each forecast.
 The current numbers, including the live track record, are on the dashboard.
 
 ## License
