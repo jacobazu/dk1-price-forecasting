@@ -12,79 +12,23 @@
 # which handles spikes and negative prices. Forecasts are transformed back.
 
 
-library(dplyr)
-library(tidyr)
-library(lubridate)
-library(glmnet)
 library(ggplot2)
+source("R/lear.R")   # build_daily, make_features, lear_forecast_day (same code as the live forecast)
 
-prices <- readRDS("data/processed/prices_dk1_hourly.rds")
+prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
+daily    <- build_daily(prices)
+features <- make_features(daily)
+P        <- features$P
+dow      <- features$dow
 
-# one row per D, one column per hour
-daily <- prices |>
-  mutate(local = with_tz(time, "Europe/Copenhagen"),
-         date  = as_date(local),
-         hour  = hour(local)) |>
-  group_by(date, hour) |>
-  summarise(price = mean(price), .groups = "drop") |>   # 25-hour day: averages the double hour
-  pivot_wider(names_from = hour, values_from = price, names_prefix = "h") |>
-  complete(date = seq(min(date), max(date), by = "day")) |>
-  select(date, all_of(paste0("h", 0:23))) |>
-  arrange(date)
-
-# due to spring DST time, we are missing an hour, so we are averaging with hours around it
-daily <- daily |>
-  mutate(h2 = if_else(is.na(h2), (h1 + h3) / 2, h2))
-
-P <- as.matrix(daily[, -1])   # price matrix. dimension := days x 24 hours
-
-# features, lagged days and weekday dummy
-lag_days <- function(M, k) rbind(matrix(NA, k, ncol(M)), M[1:(nrow(M) - k), , drop = FALSE])
-
-X_price <- cbind(lag_days(P, 1), lag_days(P, 2), lag_days(P, 3), lag_days(P, 7))
-colnames(X_price) <- paste0("d", rep(c(1, 2, 3, 7), each = 24), "_h", 0:23)
-# 1 is monday
-dow   <- wday(daily$date, week_start = 1)                 
-X_dow <- sapply(1:7, \(d) as.numeric(dow == d))
-colnames(X_dow) <- paste0("dow", 1:7)
-
-# Helpers
-transform_p <- function(x, med, s) asinh((x - med) / s)
-inverse_p   <- function(z, med, s) med + s * sinh(z)
-
-#glmnet to do LASSO BIC
-
-fit_lasso_bic <- function(X, y) {
-  fit  <- glmnet(X, y, alpha = 1)
-  rss  <- colSums((y - predict(fit, X))^2)
-  n    <- length(y)
-  bic  <- n * log(rss / n) + fit$df * log(n)
-  list(fit = fit, lambda = fit$lambda[which.min(bic)])
-}
-
-# rolling forecast over data set test frame
-window    <- 730                                         # 2 years of training
+# rolling forecast over data set test frame, 2 years of training before each day
 test_days <- which(daily$date >= as_date("2025-10-01") & complete.cases(P))
 F_lear    <- matrix(NA, nrow(P), 24)
 
 for (d in test_days) {
-  train <- (d - window):(d - 1)
-  
-  # transformation parameters from the training window only , preventing look ahead
-  med <- median(P[train, ], na.rm = TRUE)
-  s   <- mad(P[train, ], na.rm = TRUE)
-  
-  X_train <- cbind(transform_p(X_price[train, ], med, s), X_dow[train, ])
-  X_test  <- cbind(transform_p(X_price[d, , drop = FALSE], med, s), X_dow[d, , drop = FALSE])
-  if (anyNA(X_test)) next
-  
-  for (h in 1:24) {
-    y    <- transform_p(P[train, h], med, s)
-    keep <- complete.cases(X_train) & !is.na(y)
-    m    <- fit_lasso_bic(X_train[keep, ], y[keep])
-    F_lear[d, h] <- inverse_p(predict(m$fit, X_test, s = m$lambda), med, s)
-  }
-  
+  fc <- tryCatch(lear_forecast_day(features, d, window = 730), error = \(e) NULL)
+  if (!is.null(fc)) F_lear[d, ] <- fc
+
   if (which(test_days == d) %% 30 == 0) message("Forecasted up to ", daily$date[d])
 }
 
