@@ -40,41 +40,6 @@ p < 0.001). The dashboard also has Giacomini-White tests, a model confidence set
 80% prediction bands, and a battery backtest where a 2 MWh battery plans each day with each forecast.
 The current numbers, including the live track record, are on the dashboard.
 
-## What I got wrong along the way
-
-- **Look-ahead in the wind and solar data.** My first version used Energinet's day-ahead wind and solar
-  forecasts and came out about 35% better than the naive forecast (same hour yesterday). Those forecasts are published at 18:00
-  the day before, after the noon auction, so they could never have been used for a real bid. Without
-  them most of the gain disappeared. Weather forecasts made 48 hours ahead brought it back honestly.
-- **The random seed in XGBoost.** The seed was the row number of the day, which is different on my PC
-  and on GitHub, so the live model was not exactly the one I had tested. Changing only the seed moved
-  single hours by up to 11 €/MWh. The seed is now the forecast date.
-- **Accuracy is not money.** BMT-X and LEAR-X are equally accurate (Diebold-Mariano p = 0.74), but in
-  the battery backtest LEAR-X earns about €5 more per day (p < 0.001). A battery only needs the shape
-  of the day, not the level.
-
-## Running it
-
-Open `dk1-price-forecasting.Rproj` in RStudio and install the same package versions with:
-
-```r
-renv::restore()
-```
-
-The scripts in `scripts/` run in order. The backtests need the full price history (`01_download.R`,
-`02_clean.R`) and the extra data (`07_download_exog.R`, `07b_download_weather.R`).
-`preview_dashboard.R` renders the dashboard locally. The daily GitHub run only uses `01_update_live.R`,
-`05_forecast_tomorrow.R`, `10_evaluate.R` and `11_battery.R`.
-
-```
-R/          functions: models, data, evaluation, battery
-scripts/    downloads, backtests, daily forecast, evaluation
-results/    small result files the dashboard reads
-live/       the last two years of prices, neighbour prices and weather
-forecasts/  every live forecast, saved before the auction and never changed
-tests/      checks that the fast BMT picks the same variables as the original
-```
-
 ## License
 
 The code in this repository is released under the [MIT License](LICENSE).
