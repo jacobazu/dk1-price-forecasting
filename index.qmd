@@ -228,10 +228,16 @@ sig_txt <- if (has_eval && nrow(filter(eval_acc, !grepl("^naive", model))) >= 2)
 post_txt <- if (!is.null(eval_post) && main %in% eval_post$model) {
   r <- eval_post[eval_post$model == main, ]
   n_sig <- sum(eval_post$dm_p < 0.05 & eval_post$mae_corr < eval_post$mae_raw)
-  sprintf(paste("Bias correction (median error of the last %d days): %s mean error %+.1f to %+.1f, MAE %.1f to %.1f (DM %s);",
-                "significant for %d of %d models; not used for the live forecast. 80%% band (scaled by last week's volatility): covers %s of hours."),
-          k_bias, text_labels[[main]], r$mean_error_raw, r$mean_error_corr, r$mae_raw, r$mae_corr, p_txt(r$dm_p),
-          n_sig, nrow(eval_post), pct(r$coverage))
+  med_txt <- sprintf(paste("Bias correction (median error of the last %d days): %s mean error %+.1f to %+.1f, MAE %.1f to %.1f (DM %s);",
+                           "significant for %d of %d models; not used for the live forecast."),
+                     k_bias, text_labels[[main]], r$mean_error_raw, r$mean_error_corr, r$mae_raw, r$mae_corr, p_txt(r$dm_p),
+                     n_sig, nrow(eval_post))
+  mz_txt <- if ("mae_mz" %in% names(r)) {
+    sprintf("Mincer-Zarnowitz correction (a + b × forecast on the same %d days): MAE %.1f, %s than the median shift (DM %s).",
+            k_bias, r$mae_mz, if (r$mae_mz < r$mae_corr) "better" else "worse", p_txt(r$dm_p_mz_med))
+  } else ""
+  band_txt <- sprintf("80%% band (scaled by last week's volatility): covers %s of hours.", pct(r$coverage))
+  paste(med_txt, mz_txt, band_txt)
 } else ""
 
 xgb_txt <- if (!is.null(xgb_tun) && any(xgb_tun$chosen)) {
@@ -833,7 +839,9 @@ worse (Holm). The model confidence set (Hansen, Lunde & Nason, 10%, 7-day block 
 models that can't be told apart from the best one.
 
 **Bias:** mean error above 0 = too low on average; Mincer-Zarnowitz slope above 1 = moves too little
-(MZ p tests intercept 0 and slope 1, Newey-West).
+(MZ p tests intercept 0 and slope 1, Newey-West). Two corrections are tested, both from the last 28
+days only: adding the median error, and a + b × forecast from the Mincer-Zarnowitz regression
+(Theil's optimal linear correction).
 
 **Live:** each forecast is saved before the noon auction the day before, with the time it was made,
 and never changed. After noon nothing is saved.

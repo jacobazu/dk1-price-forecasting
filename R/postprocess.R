@@ -1,6 +1,6 @@
 # bias correction and 80% intervals from past errors, only days before D are used
-# bias = median error of the last 28 days. interval = 10% and 90% quantile of the last 60 days
-# per hour, scaled by how volatile the week before was
+# bias = median error of the last 28 days, or a + b * forecast fitted on the same days (mincer-zarnowitz)
+# interval = 10% and 90% quantile of the last 60 days per hour, scaled by how volatile the week before was
 
 library(dplyr)
 
@@ -32,18 +32,29 @@ adjust_day <- function(errors, D, s_D) {
   mutate(q, date = D, bias = median(past_b$e))
 }
 
-# corrected forecast and intervals for every day in fc
+# mincer-zarnowitz correction (theil): actual = a + b * forecast on the same last 28 days
+mz_day <- function(x, D) {
+  past <- x[x$date >= D - k_bias & x$date < D, ]
+  if (n_distinct(past$date) < 0.8 * k_bias) return(NULL)
+  ab <- coef(lm(actual ~ forecast, data = past))
+  tibble(date = D, mz_a = ab[[1]], mz_b = ab[[2]])
+}
+
+# corrected forecasts and intervals for every day in fc
 postprocess <- function(fc, m, scale) {
-  errors <- fc |>
-    transmute(date, hour, e = actual - .data[[m]]) |>
+  x <- select(fc, date, hour, actual, forecast = all_of(m))
+  errors <- x |>
+    transmute(date, hour, e = actual - forecast) |>
     left_join(scale, by = "date")
   dates <- sort(unique(fc$date))
   adj <- bind_rows(lapply(dates, \(D) adjust_day(errors, D, scale$s[scale$date == D])))
-  fc |>
-    select(date, hour, actual, forecast = all_of(m)) |>
+  mz  <- bind_rows(lapply(unique(adj$date), \(D) mz_day(x, D)))
+  x |>
     inner_join(adj, by = c("date", "hour")) |>
-    mutate(model     = m,
-           corrected = forecast + bias,
-           lower     = forecast + lo,   upper   = forecast + hi,
-           lower_s   = forecast + lo_s, upper_s = forecast + hi_s)
+    inner_join(mz, by = "date") |>
+    mutate(model        = m,
+           corrected    = forecast + bias,
+           corrected_mz = mz_a + mz_b * forecast,
+           lower        = forecast + lo,   upper   = forecast + hi,
+           lower_s      = forecast + lo_s, upper_s = forecast + hi_s)
 }

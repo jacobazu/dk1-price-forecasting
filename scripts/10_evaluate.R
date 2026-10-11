@@ -182,13 +182,18 @@ mcs_models <- mcs(L_models) |>
 print(mcs_models)
 
 # bias correction and 80% intervals (R/postprocess.R), corrected vs raw with a dm test
+# mz = mincer-zarnowitz correction, tested against raw and against the median shift
 scale <- vol_scale(bind_rows(select(fc, date, hour, actual), actual), sort(unique(fc$date)))
 post <- bind_rows(lapply(setdiff(models, "naive_mix"), \(m) {
   x  <- postprocess(fc, m, scale)
   dl <- x |>
     group_by(date) |>
-    summarise(d = mean(abs(actual - corrected)) - mean(abs(actual - forecast)), .groups = "drop")
-  dm <- dm_test(dl$d)
+    summarise(raw = mean(abs(actual - forecast)),
+              med = mean(abs(actual - corrected)),
+              mz  = mean(abs(actual - corrected_mz)), .groups = "drop")
+  dm        <- dm_test(dl$med - dl$raw)
+  dm_mz     <- dm_test(dl$mz - dl$raw)
+  dm_mz_med <- dm_test(dl$mz - dl$med)
   tibble(model        = m,
          days         = n_distinct(x$date),
          mae_raw      = mean(abs(x$actual - x$forecast)),
@@ -207,7 +212,12 @@ post <- bind_rows(lapply(setdiff(models, "naive_mix"), \(m) {
                                (pmax(x$lower_s - x$actual, 0) + pmax(x$actual - x$upper_s, 0))),
          score_plain  = mean((x$upper - x$lower) + 2 / (1 - diff(q_probs)) *
                                (pmax(x$lower - x$actual, 0) + pmax(x$actual - x$upper, 0))),
-         nominal      = diff(q_probs))
+         nominal      = diff(q_probs),
+         mae_mz          = mean(abs(x$actual - x$corrected_mz)),
+         mean_error_mz   = mean(x$actual - x$corrected_mz),
+         dm_p_mz         = dm_mz[["p"]],
+         dm_p_mz_med     = dm_mz_med[["p"]],
+         mz_slope_median = median(x$mz_b))
 }))
 print(post)
 write_csv(post, "results/eval_post.csv")
