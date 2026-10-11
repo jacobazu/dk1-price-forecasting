@@ -1,7 +1,5 @@
-# BMT backtest, prices only (baseline before adding exogenous variables)
-# same setup as 04_lear.R: forecast all 24 hours of day D on D-1, 2 year rolling window,
-# candidates are the prices from D-1, D-2, D-3 and D-7, weekday dummies always included
-# BMT picks variables by multiple testing (thesis method) instead of LASSO
+# BMT backtest, prices only
+# same setup as 04_lear.R, bmt picks the lagged prices by multiple testing instead of lasso
 
 library(dplyr)
 library(tidyr)
@@ -81,7 +79,7 @@ as_tibble(sel_share, rownames = "target") |>
 saveRDS(results_long, "data/processed/forecasts_bmt.rds")
 saveRDS(sel_share, "data/processed/bmt_selection.rds")
 
-# small summary for the dashboard: share of test days each lagged price is selected, per hour
+# share of test days each lagged price is selected, per hour (for the dashboard)
 dir.create("results", showWarnings = FALSE)
 readr::write_csv(as_tibble(sel_share, rownames = "target") |>
                    pivot_longer(-target, names_to = "input", values_to = "share") |>

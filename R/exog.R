@@ -1,12 +1,10 @@
-# exogenous candidates for BMT-X, one row per day like the price lags in R/lear.R
-# groups: neighbour prices (D-1), wind forecasts (D), solar forecast (D), holidays
-# uses lag_days() from R/lear.R
+# exogenous variables, one row per day like the price lags
 
 library(dplyr)
 library(tidyr)
 library(lubridate)
 
-# hourly series (time in utc) to a days x 24 matrix in danish time, same rules as build_daily()
+# hourly series (utc) to days x 24 in danish time, same as build_daily()
 to_daily <- function(df, col, dates) {
   d <- df |>
     transmute(local = with_tz(time, "Europe/Copenhagen"), value = .data[[col]]) |>
@@ -23,7 +21,7 @@ to_daily <- function(df, col, dates) {
   as.matrix(d)
 }
 
-# fill short gaps in an hourly series by linear interpolation (not at the ends)
+# fill short gaps by linear interpolation
 fill_gaps <- function(df, cols) {
   grid <- tibble(time = seq(min(df$time), max(df$time), by = "hour"))
   df <- left_join(grid, df, by = "time")
@@ -34,7 +32,7 @@ fill_gaps <- function(df, cols) {
   df
 }
 
-# danish holidays (easter from the gregorian algorithm)
+# danish holidays, easter from the gregorian algorithm
 easter <- function(y) {
   a <- y %% 19; b <- y %/% 100; c <- y %% 100
   d <- b %/% 4; e <- b %% 4; f <- (b + 8) %/% 25; g <- (b - f + 1) %/% 3
@@ -60,9 +58,8 @@ dk_holidays <- function(years) {
     arrange(date)
 }
 
-# weather forecasts from open-meteo made 48 hours ahead (07b_download_weather.R), so known
-# before the auction. wind: mean 100 m wind speed of the wind sites through a simple power curve
-# (0 below 3 m/s, full from 12 m/s), solar: mean radiation of the solar sites. days x 24 each
+# open-meteo weather forecasts made 48 hours ahead
+# wind speed through a simple power curve (0 below 3 m/s, full from 12 m/s), solar radiation
 make_weather <- function(dates, weather) {
   w <- weather |>
     transmute(time,
@@ -74,8 +71,7 @@ make_weather <- function(dates, weather) {
   cbind(wpow, solar)
 }
 
-# all exogenous candidates, raw (not transformed), per group
-# wind_solar = NULL leaves wind and solar out (the live forecast, see 08_bmtx.R)
+# all exogenous variables per group, not transformed (wind_solar = NULL leaves them out)
 make_exog <- function(dates, neighbours, wind_solar, holidays) {
   areas <- c("DE", "DK2", "NO2", "SE3", "SE4")
   nb <- do.call(cbind, lapply(areas, \(a) {
@@ -99,8 +95,7 @@ make_exog <- function(dates, neighbours, wind_solar, holidays) {
   list(nb = nb, wind = wind, solar = solar, hol = hol)
 }
 
-# transform with the training window only: neighbour prices like the dk1 prices (asinh with
-# their own median and mad per area), wind and solar standardised, holidays as they are
+# transform on the training window: neighbour prices asinh like dk1, wind/solar/weather standardised
 transform_exog <- function(exog, train) {
   block <- function(X, f) {
     if (is.null(X)) return(NULL)

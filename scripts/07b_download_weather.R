@@ -1,10 +1,4 @@
-# weather forecasts for DK1 from open-meteo, as they looked before the auction
-# previous runs api: "_previous_day2" = the value forecast 48 hours before that hour, so for every
-# hour of delivery day D it was made on D-2 at the latest, before the noon auction on D-1
-# (the energi data service wind/solar forecasts are published at 18:00 on D-1, too late)
-# wind speed at 100 m at a few wind areas, solar radiation at a few solar areas
-# the archive starts in january 2024
-# saves data/raw/weather_openmeteo.rds (one row per hour, utc)
+# open-meteo weather forecasts made 48 hours ahead (before the auction), from january 2024
 
 source("R/weather.R")   # sites and get_weather()
 

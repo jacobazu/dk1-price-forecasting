@@ -1,6 +1,5 @@
-# updating the live price file on github every day
-# adds the newest days and removes days older than 2 years
-# full history for backtests still comes from 01_download.R and 02_clean.R
+# updating the live files on github every day, rolling 2 years
+# full history for the backtests comes from 01_download.R and 02_clean.R
 
 library(dplyr)
 library(lubridate)
@@ -59,9 +58,7 @@ cat("Live prices:", format(min(live$time)), "to", format(max(live$time)),
     "UTC,", nrow(live), "hours\n")
 
 
-# neighbour prices for BMT-X / LEAR-X / XGB-X, same rolling window
-# (the file was started from 07_download_exog.R, after that only the newest days are added)
-# if this fails the dk1 prices above are still saved, the -X models just get no forecast
+# neighbour prices, if this fails the dk1 prices are still saved
 tryCatch({
   areas   <- c("DE", "DK2", "NO2", "SE3", "SE4")
   file_nb <- "live/neighbours_live.csv"
@@ -86,8 +83,7 @@ tryCatch({
 }, error = \(e) message("Neighbour prices not updated: ", conditionMessage(e)))
 
 
-# weather forecasts made 48 hours ahead (open-meteo, see 07b_download_weather.R), same rolling window
-# the values for tomorrow were forecast on the day before yesterday, so they are known now
+# open-meteo weather made 48 hours ahead, tomorrow's values are already known now
 tryCatch({
   source("R/weather.R")
   file_wx <- "live/weather_live.csv"

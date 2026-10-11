@@ -1,12 +1,10 @@
-# all forecasts for the evaluation and the battery: the backtest (results/backtest_forecasts.csv,
-# written by 10_evaluate.R) plus every live day after it where all models were saved before the
-# auction. actual prices from data/processed/prices_dk1_hourly.rds
+# backtest + live days where all models were saved before the auction
 
 library(dplyr)
 library(tidyr)
 library(readr)
 
-# ensemble = equal-weight average of the three -X models (multiple testing, lasso, trees)
+# ensemble = average of bmt-x, lear-x and xgboost-x
 ensemble_parts <- list(ensemble = c("bmtx", "learx", "xgbx"))
 add_ensembles <- function(df) {
   for (e in names(ensemble_parts)) df[[e]] <- rowMeans(as.matrix(df[, ensemble_parts[[e]]]))

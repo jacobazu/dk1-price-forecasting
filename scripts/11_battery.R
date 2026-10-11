@@ -1,6 +1,6 @@
 # economic evaluation with a battery, runs every morning on github after 10_evaluate.R
-# battery plans each day with the forecast and gets paid the actual prices
-# perfect = plan with actual prices, best possible
+# the battery plans each day with the forecast and is paid the actual prices
+# perfect = plans with the actual prices
 
 library(dplyr)
 library(tidyr)
@@ -18,8 +18,7 @@ power_mw  <- battery_setup$power_mw
 eff_rt    <- battery_setup$eff_rt
 max_cycle <- battery_setup$max_cycle
 
-# same forecasts as 10_evaluate.R: the backtest plus the live days saved before the auction
-# models shown on the dashboard: the three -X models, their ensemble and the weekly naive benchmark
+# same forecasts as 10_evaluate.R
 models <- c("ensemble", "bmtx", "learx", "xgbx", "naive_mix")
 fc <- all_forecasts(models)
 
@@ -89,7 +88,7 @@ p <- profit |>
   theme_minimal()
 print(p)
 
-# results for the dashboard, small files so they go on github
+# results for the dashboard
 dir.create("results", showWarnings = FALSE)
 write_csv(mutate(profit, across(-date, \(x) round(x, 2))) |>
             left_join(distinct(fc, date, source), by = "date"),

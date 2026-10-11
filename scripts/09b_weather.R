@@ -1,9 +1,6 @@
-# BMT-X, LEAR-X and XGBoost-X with weather forecasts added (open-meteo, made 48 hours ahead, so
-# known before the auction): neighbour prices + holidays + wind power curve + solar radiation
-# same test days as the other models. the weather archive starts 7 march 2024, so until march 2026
-# the training window is shorter than 2 years for these models (days without weather are left out)
-# xgboost uses the depth and rounds chosen for XGBoost-X in 09_xgb.R (no new tuning)
-# needs 02_clean.R, 07_download_exog.R, 07b_download_weather.R and 09_xgb.R
+# BMT-X, LEAR-X and XGBoost-X with open-meteo weather (made 48 hours ahead) added
+# the weather archive starts march 2024, so the window is shorter than 2 years until march 2026
+# xgboost uses the depth and rounds from 09_xgb.R
 
 library(dplyr)
 library(tidyr)

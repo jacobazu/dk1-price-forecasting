@@ -37,7 +37,7 @@ test <- forecasts |>
   filter(time >= as_datetime("2025-10-01", tz = "UTC")) |>
   filter(!is.na(price))
 
-# accuracy (EUR/MWh) MAE and RSME
+# accuracy (EUR/MWh) MAE and RMSE
 results <- tibble(
   model = c("naive_day", "naive_week", "naive_mix"),
   MAE   = sapply(model, \(m) mean(abs(test$price - test[[m]]), na.rm = TRUE)),

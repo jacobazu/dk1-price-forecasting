@@ -3,7 +3,7 @@
 
 
 # forecasting setup:
-# on D-1 forecast all 24 hoursof day D .
+# on D-1 forecast all 24 hours of day D.
 # one LASSO regression per hour - 24 regressions, re estimated every day
 # all prices from day D-1, D-2, D-3 and D-7 plus weekday dummies are input
 # going over a rolling window over the data set time frame ( this analysis is 2 years in this case ) before each forecast day.

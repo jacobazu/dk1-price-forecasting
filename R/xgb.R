@@ -1,7 +1,4 @@
-# xgboost: one model for all 24 hours (one row per day and hour) instead of 24 models
-# target = asinh-transformed price like LEAR and BMT, trees don't care about scaling the inputs
-# uses build_daily(), make_features(), transform_p(), inverse_p() from R/lear.R
-# and the exog list from make_exog() in R/exog.R
+# xgboost: one model for all 24 hours, target asinh-transformed like lear and bmt
 
 library(xgboost)
 
@@ -14,13 +11,11 @@ xgb_params <- list(objective        = "reg:squarederror",
                    nthread          = 1)
 xgb_rounds <- 500
 
-# days x 24 matrix to one long column (day 1 hour 0, day 1 hour 1, ...)
+# days x 24 to one long column
 long <- function(M) as.vector(t(M))
 
-# one row per day and hour, for the days in rows
-# prices: same hour on D-1, D-2, D-3, D-7 and the level and range of D-1
-# exog (optional): neighbour prices same hour D-1 + their daily mean, holidays,
-# and wind and solar forecasts for the hour + daily mean if exog has them
+# one row per day and hour: same-hour prices on D-1, D-2, D-3, D-7, level and range of D-1
+# plus the exogenous variables when given
 xgb_design <- function(features, rows, exog = NULL) {
   P   <- features$P
   lag <- function(k) lag_days(P, k)[rows, , drop = FALSE]
@@ -50,8 +45,7 @@ xgb_design <- function(features, rows, exog = NULL) {
     colnames(m) <- paste0(a, c("_d1", "_d1_mean"))
     m
   }))
-  # wind and solar only if they are in the list (the day-ahead forecasts are published at 18:00,
-  # after the auction, so they are left out of the honest version)
+  # energinet wind/solar, only in the study (published after the auction)
   ws <- NULL
   if (!is.null(exog$wind)) {
     ws <- do.call(cbind, lapply(list(c("offwind_d0", "offwind"), c("onwind_d0", "onwind"),
@@ -62,7 +56,7 @@ xgb_design <- function(features, rows, exog = NULL) {
       m
     }))
   }
-  # open-meteo weather (wind power curve and solar) for the hour + daily mean, if exog has it
+  # open-meteo weather
   wx <- NULL
   if (!is.null(exog$wx)) {
     wx <- do.call(cbind, lapply(c("wxwind_d0", "wxsolar_d0"), \(v) {
@@ -76,9 +70,8 @@ xgb_design <- function(features, rows, exog = NULL) {
         hol_d1 = rep24(exog$hol[rows, "hol_d1"]))
 }
 
-# forecast all 24 hours of day d, trained on the `window` days before it
-# rounds can be a vector (for tuning), then one column per number of rounds
-# seed = the forecast date as a number, so the backtest and the live run use the same random rows
+# forecast all 24 hours of day d, rounds can be a vector (tuning)
+# seed = forecast date, so the backtest and the live run give the same forecast
 xgb_forecast_day <- function(features, d, window = 730, exog = NULL, params = xgb_params,
                              rounds = xgb_rounds, seed) {
   P     <- features$P

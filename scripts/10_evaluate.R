@@ -1,10 +1,6 @@
-# evaluation of all forecasts: the backtest, plus every live day saved before the auction since then
-# accuracy (mae, rmse, rmae), diebold-mariano and giacomini-white tests, bias (mincer-zarnowitz),
-# shape of the day (cheapest / most expensive hour) and a model confidence set over the models
-# runs every morning on github, so the results grow by one live day each day
-# the backtest forecasts are stored in results/backtest_forecasts.csv, made from the output of
-# 04_lear.R, 06_bmt.R, 09_xgb.R and 09b_weather.R when those files are there (on my pc, not on github)
-# writes small csv files to results/ that the dashboard reads
+# evaluation of the backtest + live days: accuracy, dm and gw tests, bias, shape of the day,
+# model confidence set, bias correction and intervals. runs every morning on github
+# results/backtest_forecasts.csv is rebuilt from the backtest output when it is there (my pc)
 
 library(dplyr)
 library(tidyr)
@@ -15,9 +11,9 @@ source("R/mcs.R")
 source("R/forecasts.R")
 source("R/postprocess.R")
 
-# models shown on the dashboard: the three -X models, their ensemble and the weekly naive benchmark
+# models on the dashboard
 models <- c("ensemble", "bmtx", "learx", "xgbx", "naive_mix")
-# all single models are kept in the stored backtest file
+# all single models stay in the backtest file
 stored <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
 dir.create("results", showWarnings = FALSE)
 
@@ -36,7 +32,7 @@ if (all(file.exists(bt_files))) {
   backtest <- readRDS(bt_files[1]) |>
     select(date, hour, actual, lear, naive_mix) |>
     inner_join(select(readRDS(bt_files[2]), date, hour, bmt), by = c("date", "hour")) |>
-    # the -X models: neighbour prices, holidays and weather forecasts made 48 hours ahead (09b_weather.R)
+    # the -X models with weather (09b_weather.R)
     inner_join(wide(readRDS(bt_files[5])), by = c("date", "hour")) |>
     # plain xgboost (09_xgb.R)
     inner_join(wide(filter(readRDS(bt_files[4]), model == "xgb")), by = c("date", "hour")) |>
@@ -185,8 +181,7 @@ mcs_models <- mcs(L_models) |>
   mutate(in_mcs = mcs_p >= 0.10)
 print(mcs_models)
 
-# bias correction and 80% intervals from past errors (R/postprocess.R), for every real model
-# from the day there are enough past errors. dm test: corrected vs raw on the same days
+# bias correction and 80% intervals (R/postprocess.R), corrected vs raw with a dm test
 scale <- vol_scale(bind_rows(select(fc, date, hour, actual), actual), sort(unique(fc$date)))
 post <- bind_rows(lapply(setdiff(models, "naive_mix"), \(m) {
   x  <- postprocess(fc, m, scale)

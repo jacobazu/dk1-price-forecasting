@@ -1,7 +1,5 @@
-# downloading exogenous variables for BMT-X
-# neighbour prices (DE, DK2, NO2, SE3, SE4), DK1 wind and solar day-ahead forecasts, danish holidays
-# wind/solar: ForecastDayAhead, published at 18:00 on D-1, after the noon auction, so it can only be
-# used to study what the information is worth (08_bmtx.R), not for a real forecast
+# downloading exogenous variables: neighbour prices, dk1 wind/solar forecasts, holidays
+# wind/solar are published at 18:00 on D-1, after the auction, so only used in the study in 08
 
 library(dplyr)
 library(tidyr)

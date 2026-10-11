@@ -1,5 +1,4 @@
-# every morning: download prices, forecast tomorrow, save the forecast, update the evaluation with
-# the newest live day, rebuild the dashboard
+# every morning: update the data, forecast tomorrow, evaluate, rebuild the dashboard
 
 name: Daily DK1 forecast
 
@@ -56,7 +55,7 @@ jobs:
         if: github.event_name != 'push'
         run: Rscript scripts/05_forecast_tomorrow.R
 
-      # backtest + every live day so far, so the numbers on the dashboard grow every day
+      # backtest + live days, grows by one day every morning
       - name: Evaluate forecasts and battery
         if: github.event_name != 'push'
         continue-on-error: true   # the forecast is still saved if this fails

@@ -1,8 +1,5 @@
 # XGBoost backtest, prices only (XGB) and with neighbour prices and holidays (XGB-X)
-# one pooled model for all 24 hours, 2 year rolling window, retrained every day like LEAR and BMT
-# tree depth and number of rounds are tuned on apr-sep 2025 (before the test period starts),
-# then kept fixed for the whole test period
-# needs the files from 02_clean.R and 07_download_exog.R
+# one model for all 24 hours, depth and rounds tuned on apr-sep 2025 and then kept fixed
 
 library(dplyr)
 library(tidyr)
@@ -25,9 +22,7 @@ exog <- make_exog(daily$date,
 
 window <- 730
 cores  <- max(1, detectCores() - 1)
-# XGB-X only gets what is known before the noon auction on D-1: neighbour prices from D-1 and
-# holidays. the wind/solar day-ahead forecasts on energi data service are published at 18:00 on
-# D-1, after the auction, so using them would be look-ahead
+# no energinet wind/solar here, published after the auction
 variants <- list(xgb = NULL, xgbx = exog[c("nb", "hol")])
 
 

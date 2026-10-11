@@ -1,5 +1,4 @@
-# forecasting tomorrows DK1 prices: BMT-X, LEAR-X, XGBoost-X, their ensemble and the weekly naive
-# must run before the noon auction on the day before delivery (danish time)
+# forecasting tomorrows DK1 prices, must run before the noon auction
 
 
 library(readr)
@@ -17,8 +16,7 @@ now_dk <- with_tz(Sys.time(), "Europe/Copenhagen")
 today  <- as_date(now_dk)
 target <- today + 1
 
-# after noon the auction for tomorrow is closed, a forecast made now would not be a real forecast
-# (preview_dashboard.R puts the file back afterwards, so it may write one)
+# after noon the auction is closed, so nothing is saved (except in preview_dashboard.R)
 too_late <- hour(now_dk) >= 12 && Sys.getenv("DK1_PREVIEW") != "true"
 
 # daily price matrix - empty row or tomorrow if no prices yet
@@ -37,8 +35,7 @@ safe <- function(name, f) tryCatch(f(), error = \(e) {
   message(name, " failed: ", conditionMessage(e)); rep(NA_real_, 24)
 })
 
-# -X models with what is known before the auction: neighbour prices from today, holidays and
-# weather forecasts made 48 hours ahead (energinet's wind/solar forecasts come at 18:00, too late)
+# -X models: neighbour prices from today, holidays and weather made 48 hours ahead
 exog <- make_exog(daily$date,
                   read_csv("live/neighbours_live.csv", show_col_types = FALSE),
                   NULL,
@@ -71,7 +68,7 @@ new_forecast <- tibble(
   naive_day         = round(naive_day, 2),
   naive_mix         = round(naive_mix, 2)
 ) |>
-  add_ensembles() |>   # average of the three -X models, NA if one of them failed
+  add_ensembles() |>   # NA if one of the three failed
   mutate(across(starts_with("ensemble"), \(x) round(x, 2)))
 
 # append to live file but never overwrite forecast

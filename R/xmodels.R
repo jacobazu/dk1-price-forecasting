@@ -1,8 +1,6 @@
-# BMT-X and LEAR-X for one day, same steps as the backtest loop in scripts/08_bmtx.R
-# (08 runs all 16 combinations at once, this is for the live forecast with one set of groups)
-# uses R/lear.R, R/bmt.R and R/exog.R
+# bmt-x and lear-x for one day, same steps as in 08_bmtx.R
 
-# candidates for day d: transformed dk1 price lags + the chosen exogenous groups
+# candidates for day d: dk1 price lags + exogenous groups
 x_inputs <- function(features, exog, d, groups, window = 730) {
   P     <- features$P
   train <- (d - window):(d - 1)

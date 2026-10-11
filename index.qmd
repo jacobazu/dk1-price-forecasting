@@ -27,7 +27,7 @@ source("R/battery.R")
 source("R/postprocess.R")
 source("R/forecasts.R")   # add_ensembles()
 
-Sys.setlocale("LC_TIME", "C")   # English day and month names, also on a Danish computer
+Sys.setlocale("LC_TIME", "C")   # english day and month names, also on a danish computer
 
 orange <- "#f97316"
 grey   <- "#6b7280"
@@ -68,15 +68,13 @@ mae <- function(col) {
   if (nrow(s) == 0) "\u2013" else eur(mean(abs(s$actual - s[[col]])))
 }
 
-# Models: a button appears automatically for every model column in forecasts_live.csv.
-# To add a model later, add its column name, label and colour here.
-# the -X models, their ensemble and the weekly naive benchmark
+# models on the dashboard, a button appears for every one that is a column in forecasts_live.csv
 spot_labels <- c(ensemble  = "Ensemble",
                  bmtx      = "BMT-X",
                  learx     = "LEAR-X",
                  xgbx      = "XGBoost-X",
                  naive_mix = "Naive")
-# earlier models, only shown for a day that has no forecast from the models above (12 oct 2026)
+# earlier models, only for a day without forecasts from the ones above (12 oct 2026)
 old_labels  <- c(lear = "LEAR", bmt = "BMT", xgb = "XGBoost")
 model_colors <- c(ensemble  = "#f97316",
                   bmtx      = "#7c3aed",
@@ -91,9 +89,8 @@ has_spot <- any(sapply(setdiff(names(spot_labels), "naive_mix"),
 model_labels <- if (has_spot) spot_labels else c(spot_labels, old_labels)
 models <- intersect(names(model_labels), names(fc))
 
-# buttons above a chart: one per model plus "All", actual prices are always shown
-# html buttons instead of plotly's own, so they can be styled in theme.scss
-# per_model = traces per model (band + line), "All" shows only the lines
+# html buttons above a chart (styled in theme.scss), one per model plus "All"
+# per_model = traces per model (band + line)
 model_buttons <- function(p, models, n_fixed = 1, per_model = 1) {
   vis <- c(lapply(models, \(m) c(rep(TRUE, n_fixed), rep(models == m, each = per_model))),
            list(c(rep(TRUE, n_fixed), rep(c(rep(FALSE, per_model - 1), TRUE), length(models)))))
@@ -137,7 +134,7 @@ chart_layout <- function(p, models = NULL, xtitle = "", n_fixed = 1, per_model =
   p
 }
 
-# results from the backtest scripts (results/*.csv), nothing on the dashboard is typed in by hand
+# everything below comes from results/*.csv, nothing is typed in by hand
 read_res <- function(f) if (file.exists(f)) read_csv(f, show_col_types = FALSE) else NULL
 eval_acc   <- read_res("results/eval_accuracy.csv")    # 10_evaluate.R
 eval_tests <- read_res("results/eval_tests.csv")
@@ -147,7 +144,7 @@ eval_post  <- read_res("results/eval_post.csv")
 backtest   <- read_res("results/backtest_forecasts.csv")
 if (!is.null(backtest)) backtest <- add_ensembles(backtest)
 bmt_sel    <- read_res("results/bmt_selection.csv")    # 06_bmt.R
-bmtx_combo <- read_res("results/bmtx_combos.csv")      # 10_evaluate.R
+bmtx_combo <- read_res("results/bmtx_combos.csv")      # 08_bmtx.R
 bmtx_sel   <- read_res("results/bmtx_selection.csv")   # 08_bmtx.R
 bat_daily  <- read_res("results/battery_daily.csv")    # 11_battery.R
 bat_sum    <- read_res("results/battery_summary.csv")
@@ -173,7 +170,7 @@ eur_sign <- function(x) paste0(if (x >= 0) "+" else "\u2212", prettyNum(abs(roun
 p_txt    <- function(p) if (p < 0.001) "p < 0.001" else paste("p =", format(round(p, 3), nsmall = 3))
 p_tab    <- function(p) ifelse(p < 0.001, "<0.001", format(round(p, 3), nsmall = 3))
 
-# main model: lowest backtest mae among the real models that have a forecast for tomorrow
+# main model: lowest mae among the models with a forecast for tomorrow
 real_models <- setdiff(models, "naive_mix")
 avail <- real_models[sapply(real_models, \(m) !all(is.na(tomorrow[[m]])))]
 main  <- if (has_eval) {
@@ -184,7 +181,7 @@ main_label <- model_labels[[main]]
 
 # accuracy tile: the shown model vs the weekly naive
 best_all   <- if (has_eval) eval_acc$model[!grepl("^naive", eval_acc$model)][1] else NA
-# the shown model, or the best model when the shown one is an earlier model without evaluation
+# the shown model, or the best one when the shown one is an earlier model
 best_bt    <- if (has_eval && main %in% eval_acc$model) main else best_all
 bt_improve <- if (!is.na(best_bt)) paste0("\u2212", round(100 * (1 - eval_acc$rmae[eval_acc$model == best_bt])), "%") else "\u2013"
 bt_label   <- if (is.na(best_bt)) "" else if (best_bt == main) cap(sub("^the ", "", text_labels[[best_bt]])) else
@@ -227,7 +224,7 @@ sig_txt <- if (has_eval && nrow(filter(eval_acc, !grepl("^naive", model))) >= 2)
   }
 } else ""
 
-# bias correction and band results (10_evaluate.R)
+# bias correction and band text
 post_txt <- if (!is.null(eval_post) && main %in% eval_post$model) {
   r <- eval_post[eval_post$model == main, ]
   n_sig <- sum(eval_post$dm_p < 0.05 & eval_post$mae_corr < eval_post$mae_raw)
@@ -295,7 +292,7 @@ bat_live  <- if (has_battery && "source" %in% names(bat_daily)) sum(bat_daily$so
 bat_period <- if (bat_live > 0) sprintf("%d backtest days, then %d live %s", bat_days - bat_live, bat_live,
                                         if (bat_live == 1) "day" else "days") else sprintf("%d backtest days", bat_days)
 
-# battery text that follows the results
+# battery text, follows the results
 bat_cmp <- function(a, b) {
   r <- find_test(bat_tests, a, b)
   if (is.null(r)) return("")
@@ -329,7 +326,7 @@ bat_txt <- if (has_battery) {
   paste(paste0(toupper(substring(parts, 1, 1)), substring(parts, 2)), collapse = " ")
 } else ""
 
-# 80% band for tomorrow from each model's errors on the days before (R/postprocess.R)
+# 80% band for tomorrow from each model's past errors (R/postprocess.R)
 vol_now <- vol_scale(bind_rows(actual, if (!is.null(backtest)) select(backtest, date, hour, actual)),
                      seq(latest - k_int - 1, latest, by = "day"))
 past_errors <- function(m) {
@@ -359,7 +356,7 @@ diff_html  <- if (is.na(diff_today)) "" else
 cheap <- tomorrow[which.min(tomorrow[[main]]), ]
 peak  <- tomorrow[which.max(tomorrow[[main]]), ]
 
-# live battery profit: same battery, planned with the saved live forecasts, paid the actual prices
+# live battery profit with the saved live forecasts
 lp_def   <- battery_lp(if (has_battery) as.list(setNames(bat_setup$value, bat_setup$name)) else battery_setup)
 live_days <- scored |> group_by(date) |> filter(n() == 24) |> ungroup()
 live_bat <- if (nrow(live_days) > 0) {
@@ -450,7 +447,7 @@ p <- plot_ly() |>
             line = list(color = "#cfc6bb", width = 2, dash = "dash"),
             hovertemplate = paste0("%{y:.1f} €/MWh<extra>", format(latest - 7, "%a %d %b"), "</extra>"))
 
-# the naive is left out here: its forecast is one of the two actual lines (last week on mon, sat, sun)
+# the naive is left out, its forecast is one of the two actual lines
 fc_models <- setdiff(models, "naive_mix")
 fc_models <- c(main, setdiff(fc_models, main))   # chart opens on the same model as the tiles
 

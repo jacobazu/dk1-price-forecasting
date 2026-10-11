@@ -1,6 +1,5 @@
-# model confidence set (hansen, lunde & nason 2011)
-# L = days x models matrix of daily losses, Tmax statistic, circular block bootstrap.
-# returns the mcs p-value of every model; the set at 10% = the models with p >= 0.10
+# model confidence set (hansen, lunde & nason 2011), tmax statistic, circular block bootstrap
+# L = days x models of daily losses, returns the mcs p-value of each model
 
 library(dplyr)
 

@@ -1,6 +1,5 @@
-# battery plan for one day (milp), used by 11_battery.R and the live profit on the dashboard
-# charge c1..c24, discharge d1..d24, state of charge s1..s24,
-# u1..u24 = 1 if charging in that hour (0/1, so it can't charge and discharge at the same time)
+# battery plan for one day (milp), also used for the live profit on the dashboard
+# c = charge, d = discharge, s = state of charge, u = 1 when charging (so not both in one hour)
 
 library(lpSolve)
 
@@ -50,7 +49,7 @@ battery_schedule <- function(price, lp_def = battery_lp()) {
   sol$solution[lp_def$id] - sol$solution[lp_def$ic]
 }
 
-# profit of planning with `forecast` and being paid `actual`
+# profit when planning with the forecast and paid the actual prices
 battery_profit <- function(forecast, actual, lp_def = battery_lp()) {
   sum(actual * battery_schedule(forecast, lp_def))
 }

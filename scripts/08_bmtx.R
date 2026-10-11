@@ -1,9 +1,6 @@
-# BMT-X backtest: BMT with exogenous variables, all 16 combinations of four groups
-# dk1 price lags (D-1, D-2, D-3, D-7) are always candidates, weekday dummies always included
-# groups: neighbour prices (DE, DK2, NO2, SE3, SE4 on D-1), wind forecasts (offshore + onshore
-# for D), solar forecast (D), holidays (D and D-1)
-# LEAR-X = lasso on the same pools, to compare lasso and multiple testing fairly
-# needs the files from 02_clean.R and 07_download_exog.R
+# BMT-X backtest, all 16 combinations of four exogenous groups
+# groups: neighbour prices (D-1), wind and solar forecasts (D), holidays
+# LEAR-X = lasso on the same variables
 
 library(dplyr)
 library(tidyr)
@@ -31,9 +28,7 @@ combos   <- expand.grid(rep(list(c(FALSE, TRUE)), 4))
 names(combos) <- groups
 combo_id <- apply(combos, 1, \(r) if (!any(r)) "prices" else paste(groups[r], collapse = "+"))
 
-# lear-x for the groups known before the auction, and for all groups. the wind/solar day-ahead
-# forecasts are published at 18:00 on D-1, after the noon auction, so combinations with wind or
-# solar are a study of what that information is worth, not something that can run live
+# wind/solar are published after the auction, so combinations with them are only a study
 learx_combos <- c("nb+hol", "nb+wind+solar+hol")
 
 window <- 730
@@ -131,10 +126,7 @@ fc |>
   write_csv("results/bmtx_selection.csv")
 
 
-# which groups help: mae of every combination and a model confidence set over the 16 combinations,
-# LEAR-X (all groups) and LEAR, on the same days. loss = daily average absolute error.
-# combinations with wind or solar use forecasts published after the auction, so this is a study
-# of what each group is worth, not a set of models that can run live
+# which groups help: mae and model confidence set over the 16 combinations, LEAR-X and LEAR
 lear <- readRDS("data/processed/forecasts_lear.rds") |>
   transmute(date, hour, name = "lear", forecast = lear, actual)
 study <- fc |>
