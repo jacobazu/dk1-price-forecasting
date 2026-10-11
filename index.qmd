@@ -156,7 +156,7 @@ has_eval    <- !is.null(eval_acc)
 has_battery <- !is.null(bat_sum)
 
 long_labels <- c(perfect = "Perfect foresight",
-                 ensemble = "Ensemble (BMT-X, LEAR-X, XGBoost-X)",
+                 ensemble = "Ensemble",
                  bmtx = "BMT-X", learx = "LEAR-X", xgbx = "XGBoost-X",
                  naive_mix = "Naive (weekly mix)", lear = "LEAR", bmt = "BMT", xgb = "XGBoost")
 text_labels <- c(perfect = "perfect foresight", ensemble = "the ensemble",
