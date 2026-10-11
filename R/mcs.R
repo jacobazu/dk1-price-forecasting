@@ -22,10 +22,11 @@ mcs <- function(L, B = 2000, block = 7, seed = 1) {
     bd_i  <- sweep(bm, 2, colMeans(bm))                    # bootstrap d_i
     v_i   <- rowMeans((bd_i - d_i)^2)
     t_i   <- d_i / sqrt(v_i)
-    t_max <- max(t_i)
-    boot  <- apply((bd_i - d_i) / sqrt(v_i), 2, max)
+    if (!any(is.finite(t_i))) break   # identical losses
+    t_max <- max(t_i, na.rm = TRUE)
+    boot  <- apply((bd_i - d_i) / sqrt(v_i), 2, max, na.rm = TRUE)
     p_run <- max(p_run, mean(boot >= t_max))
-    worst <- alive[which.max(t_i)]
+    worst <- alive[which.max(t_i)]   # which.max skips NA
     out   <- bind_rows(out, tibble(model = worst, mcs_p = p_run))
     alive <- setdiff(alive, worst)
   }

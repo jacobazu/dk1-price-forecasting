@@ -21,7 +21,7 @@ to_daily <- function(df, col, dates) {
   as.matrix(d)
 }
 
-# fill short gaps
+# linear fill of gaps
 fill_gaps <- function(df, cols) {
   grid <- tibble(time = seq(min(df$time), max(df$time), by = "hour"))
   df <- left_join(grid, df, by = "time")
@@ -32,7 +32,6 @@ fill_gaps <- function(df, cols) {
   df
 }
 
-# danish holidays
 easter <- function(y) {
   a <- y %% 19; b <- y %/% 100; c <- y %% 100
   d <- b %/% 4; e <- b %% 4; f <- (b + 8) %/% 25; g <- (b - f + 1) %/% 3
@@ -71,7 +70,6 @@ make_weather <- function(dates, weather) {
   cbind(wpow, solar)
 }
 
-# exogenous variables per group
 make_exog <- function(dates, neighbours, wind_solar, holidays) {
   areas <- c("DE", "DK2", "NO2", "SE3", "SE4")
   nb <- do.call(cbind, lapply(areas, \(a) {

@@ -6,7 +6,6 @@ library(dplyr)
 
 k_bias <- 28
 
-# bias and mz for day D
 bias_day <- function(x, D) {
   past <- x[x$date >= D - k_bias & x$date < D, ]
   if (n_distinct(past$date) < 0.8 * k_bias) return(NULL)
@@ -14,7 +13,6 @@ bias_day <- function(x, D) {
   tibble(date = D, bias = median(past$actual - past$forecast), mz_a = ab[[1]], mz_b = ab[[2]])
 }
 
-# corrected forecasts
 postprocess <- function(fc, m) {
   x   <- select(fc, date, hour, actual, forecast = all_of(m))
   adj <- bind_rows(lapply(sort(unique(x$date)), \(D) bias_day(x, D)))

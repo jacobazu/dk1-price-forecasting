@@ -25,7 +25,7 @@ bmtx_forecast_day <- function(features, exog, d, groups = c("nb", "hol", "wx"), 
   qC  <- qr(cbind(1, Dtr))
   E0  <- qr.resid(qC, Xtr)
   df0 <- length(inp$keep) - qC$rank
-  ss0 <- colSums(scale(Xtr, scale = FALSE)^2)
+  ss0 <- colSums(Xtr^2)
 
   sapply(1:24, \(h) {
     y   <- transform_p(features$P[inp$keep, h], inp$med, inp$s)

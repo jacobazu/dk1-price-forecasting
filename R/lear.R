@@ -24,7 +24,6 @@ build_daily <- function(prices) {
   daily |> mutate(h2 = if_else(is.na(h2), (h1 + h3) / 2, h2))
 }
 
-# lag by k days
 lag_days <- function(M, k) rbind(matrix(NA, k, ncol(M)), M[1:(nrow(M) - k), , drop = FALSE])
 
 # lags D-1, D-2, D-3, D-7
@@ -54,7 +53,6 @@ fit_lasso_bic <- function(X, y) {
   list(fit = fit, lambda = fit$lambda[which.min(bic)])
 }
 
-# lear forecast for day d
 lear_forecast_day <- function(features, d, window = 730) {
   P     <- features$P
   train <- (d - window):(d - 1)

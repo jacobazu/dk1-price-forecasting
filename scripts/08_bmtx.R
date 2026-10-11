@@ -60,7 +60,7 @@ forecast_day <- function(d) {
   qC  <- qr(cbind(1, Dtr))
   E0  <- qr.resid(qC, Xtr)
   df0 <- length(keep) - qC$rank
-  ss0 <- colSums(scale(Xtr, scale = FALSE)^2)
+  ss0 <- colSums(Xtr^2)
 
   rows <- list()
   for (h in 1:24) {

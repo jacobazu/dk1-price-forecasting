@@ -69,8 +69,7 @@ xgb_design <- function(features, rows, exog = NULL) {
         hol_d1 = rep24(exog$hol[rows, "hol_d1"]))
 }
 
-# xgboost forecast for day d
-# seed = date, reproducible
+# seed = date, so live = backtest
 xgb_forecast_day <- function(features, d, window = 730, exog = NULL, params = xgb_params,
                              rounds = xgb_rounds, seed) {
   P     <- features$P
@@ -80,7 +79,7 @@ xgb_forecast_day <- function(features, d, window = 730, exog = NULL, params = xg
   s   <- mad(P[train, ], na.rm = TRUE)
 
   X_test <- xgb_design(features, d, exog)
-  if (anyNA(X_test[, c("p_d1", "p_d2", "p_d3", "p_d7")])) stop("Missing input prices for the forecast day")
+  if (anyNA(X_test)) stop("Missing inputs for the forecast day")
 
   X <- xgb_design(features, train, exog)
   y <- transform_p(long(P[train, , drop = FALSE]), med, s)

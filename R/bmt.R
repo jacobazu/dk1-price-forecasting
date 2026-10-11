@@ -28,24 +28,22 @@ bmt_select <- function(y, X, Xcond = NULL, pval = 0.05, delta1 = 1, delta2 = 1) 
     ssr <- sum(ey^2) - sxy^2 / sxx
     t   <- abs(sxy) / sqrt(sxx * ssr / df)
 
-    # drop near-collinear candidates
-    xc <- scale(X[, cand, drop = FALSE], scale = FALSE)
-    t[sxx < 1e-12 * colSums(xc^2) | sxx == 0] <- NA
+    # drop collinear and constant columns
+    t[sxx < 1e-12 * colSums(X[, cand, drop = FALSE]^2) | sxx == 0] <- NA
 
     if (all(is.na(t))) break
     best <- which.max(t)
     if (t[best] > if (first) thr1 else thr2) {
       ind[cand[best]] <- TRUE
-      first <- FALSE
-    } else {
+    } else if (!first) {
       break
     }
+    first <- FALSE   # no pick at thr1: try thr2, as boosting_glm
   }
   ind
 }
 
 
-# bmt forecast for day d
 bmt_forecast_day <- function(features, d, window = 730, pval = 0.05, delta1 = 1, delta2 = 1,
                              return_selected = FALSE) {
   P     <- features$P
@@ -88,7 +86,8 @@ bmt_select_resid <- function(E, ey, df0, ss0, pval = 0.05, delta1 = 1, delta2 = 
   N   <- ncol(E)
   thr <- c(qnorm(1 - (pval / N^(delta1 - 1)) / (2 * N)),
            qnorm(1 - (pval / N^(delta2 - 1)) / (2 * N)))
-  sel <- integer(0)
+  sel   <- integer(0)
+  first <- TRUE
 
   repeat {
     sxx <- colSums(E^2)
@@ -101,12 +100,16 @@ bmt_select_resid <- function(E, ey, df0, ss0, pval = 0.05, delta1 = 1, delta2 = 
     if (all(is.na(t))) break
 
     j <- which.max(t)
-    if (t[j] <= thr[if (length(sel) == 0) 1 else 2]) break
-    sel <- c(sel, j)
-    e   <- E[, j]
-    ee  <- sum(e^2)
-    E   <- E - outer(e, drop(crossprod(e, E)) / ee)
-    ey  <- ey - e * sum(e * ey) / ee
+    if (t[j] > thr[if (first) 1 else 2]) {
+      sel <- c(sel, j)
+      e   <- E[, j]
+      ee  <- sum(e^2)
+      E   <- E - outer(e, drop(crossprod(e, E)) / ee)
+      ey  <- ey - e * sum(e * ey) / ee
+    } else if (!first) {
+      break
+    }
+    first <- FALSE
   }
   sel
 }

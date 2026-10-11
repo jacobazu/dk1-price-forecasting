@@ -10,12 +10,14 @@ library(ggplot2)
 
 prices <- readRDS("data/processed/prices_dk1_hourly.rds")
 
-# lags
+# lags by danish date and hour (dst)
 prices <- prices |>
   mutate(
-    lag_24  = price[match(time - hours(24),  time)],   # same hour yesterday
-    lag_168 = price[match(time - hours(168), time)],   # same hour last week
-    weekday = wday(with_tz(time, "Europe/Copenhagen"), week_start = 1)  # 1 = monday
+    local   = with_tz(time, "Europe/Copenhagen"),
+    key     = paste(as_date(local), hour(local)),
+    lag_24  = price[match(paste(as_date(local) - 1, hour(local)), key)],   # same hour yesterday
+    lag_168 = price[match(paste(as_date(local) - 7, hour(local)), key)],   # same hour last week
+    weekday = wday(local, week_start = 1)  # 1 = monday
   )
 
 # benchmark forecast

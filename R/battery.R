@@ -1,5 +1,5 @@
 # battery plan for one day
-# c charge, d discharge, s stored
+# c charge, d discharge, s stored, u = charging
 
 library(lpSolve)
 
@@ -34,8 +34,8 @@ battery_lp <- function(setup = battery_setup, n = 24) {
     r <- numeric(4 * n); r[ic[h]] <- 1; r[iu[h]] <- -setup$power_mw; add(r, "<=", 0)              # c_h <= power * u_h
     r <- numeric(4 * n); r[id[h]] <- 1; r[iu[h]] <- setup$power_mw; add(r, "<=", setup$power_mw)  # d_h <= power * (1 - u_h)
   }
-  # cycles
-  r <- numeric(4 * n); r[id] <- 1; add(r, "<=", setup$cap_mwh * setup$max_cycle)
+  # cycle limit, energy out of storage
+  r <- numeric(4 * n); r[id] <- 1 / eff; add(r, "<=", setup$cap_mwh * setup$max_cycle)
 
   list(A = do.call(rbind, rows), dirs = dirs, rhs = rhs, ic = ic, id = id, iu = iu, n = n)
 }

@@ -79,15 +79,24 @@ daily_loss <- function(m, loss = c("abs", "sq")) {
   as.numeric(tapply(l, fc$date, mean))
 }
 
-# dm test, hln correction
+# dm test with hln correction, h = 1
 dm_test <- function(d) {
   n    <- length(d)
-  stat <- mean(d) / sqrt(var(d) / n)
-  stat <- stat * sqrt((n - 1) / n)   # hln, h = 1
+  dm   <- mean(d) / sqrt(mean((d - mean(d))^2) / n)
+  stat <- dm * sqrt((n - 1) / n)
   c(stat = stat, p = 2 * pt(-abs(stat), df = n - 1))
 }
 
-# giacomini-white test
+# t test with newey-west variance
+nw_test <- function(x, mu = 0, lag = 7) {
+  u  <- x - mean(x)
+  n  <- length(x)
+  lr <- mean(u^2)
+  for (k in 1:lag) lr <- lr + 2 * (1 - k / (lag + 1)) * sum(u[-(1:k)] * u[1:(n - k)]) / n
+  stat <- (mean(x) - mu) / sqrt(lr / n)
+  c(stat = stat, p = 2 * pnorm(-abs(stat)))
+}
+
 gw_test <- function(d) {
   Z  <- cbind(1, head(d, -1)) * tail(d, -1)
   n  <- nrow(Z)
@@ -96,16 +105,15 @@ gw_test <- function(d) {
   c(stat = stat, p = pchisq(stat, df = ncol(Z), lower.tail = FALSE))
 }
 
-# hours better / worse (holm)
+# hours better / worse, holm over 24 hours
 hour_tests <- function(a, b) {
-  p_better <- sapply(0:23, \(h) {
+  r <- sapply(0:23, \(h) {
     x <- fc[fc$hour == h, ]
-    d <- abs(x$actual - x[[a]]) - abs(x$actual - x[[b]])
-    stat <- mean(d) / sqrt(var(d) / length(d))
-    c(lower = pt(stat, length(d) - 1), upper = pt(stat, length(d) - 1, lower.tail = FALSE))
+    dm_test(abs(x$actual - x[[a]]) - abs(x$actual - x[[b]]))
   })
-  c(hours_a_better = sum(p.adjust(p_better["lower", ], "holm") < 0.05),
-    hours_b_better = sum(p.adjust(p_better["upper", ], "holm") < 0.05))
+  sig <- p.adjust(r["p", ], "holm") < 0.05
+  c(hours_a_better = sum(sig & r["stat", ] < 0),
+    hours_b_better = sum(sig & r["stat", ] > 0))
 }
 
 pairs <- combn(models, 2, simplify = FALSE)
@@ -128,8 +136,8 @@ print(select(tests, model_a, model_b, mae_diff, dm_p, gw_p, hours_a_better, hour
 
 
 # bias: mean error and mz
-# newey-west, 24 lags
-nw_vcov <- function(X, e, lag = 24) {
+# newey-west, one week of hours
+nw_vcov <- function(X, e, lag = 168) {
   n <- nrow(X)
   u <- X * e
   S <- crossprod(u) / n
@@ -245,7 +253,7 @@ calib <- qf |>
   group_by(model, method, tau) |>
   summarise(below = mean(below), .groups = "drop")
 
-# coverage p: daily t test
+# coverage p: newey-west, daily
 # chosen: calibrated first, then pinball
 prob <- q_day |>
   group_by(model, method) |>
@@ -255,8 +263,8 @@ prob <- q_day |>
             cov90      = mean(in90),
             width50    = mean(w50),
             width90    = mean(w90),
-            cov50_p    = dm_test(in50 - 0.5)[["p"]],
-            cov90_p    = dm_test(in90 - 0.9)[["p"]],
+            cov50_p    = nw_test(in50, 0.5)[["p"]],
+            cov90_p    = nw_test(in90, 0.9)[["p"]],
             days_live  = sum(source == "live"),
             cov50_live = if (days_live > 0) mean(in50[source == "live"]) else NA_real_,
             cov90_live = if (days_live > 0) mean(in90[source == "live"]) else NA_real_,
