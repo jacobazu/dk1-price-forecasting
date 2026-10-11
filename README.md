@@ -32,7 +32,7 @@ Backtest from 1 October 2025 to 10 October 2026 (375 days), all models on the sa
 | Ensemble | 19.0 | −44% |
 | LEAR-X | 20.3 | −41% |
 | BMT-X | 20.4 | −40% |
-| XGBoost-X | 20.6 | −40% |
+| XGBoost-X | 20.5 | −40% |
 | Weekly naive | 34.2 | |
 
 The ensemble is significantly more accurate than each of the single models (Diebold-Mariano,
