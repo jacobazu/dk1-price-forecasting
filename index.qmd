@@ -70,11 +70,13 @@ mae <- function(col) if (has_scores) eur(mean(abs(scored$actual - scored[[col]])
 # Models: a button appears automatically for every model column in forecasts_live.csv.
 # To add a model later, add its column name, label and colour here.
 model_labels <- c(lear      = "LEAR",
+                  bmt       = "BMT",
                   lear_x    = "LEAR + exogenous",
                   xgb       = "XGBoost",
                   ensemble  = "Ensemble",
                   naive_day = "Naive")
 model_colors <- c(lear      = "#f97316",
+                  bmt       = "#2563eb",
                   lear_x    = "#0ea5e9",
                   xgb       = "#16a34a",
                   ensemble  = "#8b5cf6",
@@ -146,8 +148,34 @@ p_txt    <- function(p) if (p < 0.001) "p < 0.001" else paste("p =", format(roun
 bat_share <- if (has_battery) pct(bat_val("lear", "share_of_perfect")) else "\u2013"
 bat_extra <- if (has_battery) eur_sign(bat_val("lear", "eur_per_mw_year") - bat_val("naive_day", "eur_per_mw_year")) else "\u2013"
 bat_p     <- if (has_battery) p_txt(bat_tests$p_value[bat_tests$comparison == "lear_vs_naive_day"]) else "\u2013"
-bat_p_mix <- if (has_battery) p_txt(bat_tests$p_value[bat_tests$comparison == "lear_vs_naive_mix"]) else "\u2013"
 bat_days  <- if (has_battery) nrow(bat_daily) else 0
+# battery text that follows the results, so it stays right if a rerun changes them
+bat_vs <- function(comparison, name) {
+  r <- bat_tests[bat_tests$comparison == comparison, ]
+  if (r$p_value < 0.05) {
+    sprintf("earns significantly %s than %s (%s)",
+            if (r$mean_eur_per_day > 0) "more" else "less", name, p_txt(r$p_value))
+  } else {
+    sprintf("is not significantly different from %s (%s)", name, p_txt(r$p_value))
+  }
+}
+bat_test_txt <- if (has_battery) paste0("LEAR ", bat_vs("lear_vs_naive_day", "same hour yesterday"),
+                                        " and ", bat_vs("lear_vs_naive_mix", "the weekly mix"),
+                                        ", t-test on daily profit with Newey-West errors.") else ""
+bat_shape_txt <- if (has_battery) {
+  mix_earns_more <- bat_val("naive_mix", "total_eur") > bat_val("naive_day", "total_eur")
+  mix_mae_worse  <- bat_val("naive_mix", "mae") > bat_val("naive_day", "mae")
+  if (mix_earns_more && mix_mae_worse) {
+    "The weekly mix earns more than 'same hour yesterday' even though its MAE is worse: a battery only needs the shape of the day, not the level."
+  } else if (!mix_earns_more && !mix_mae_worse) {
+    "'Same hour yesterday' earns more than the weekly mix even though its MAE is worse: a battery only needs the shape of the day, not the level."
+  } else if (mix_earns_more) {
+    "The weekly mix has both the lower MAE and the higher profit of the two naive forecasts."
+  } else {
+    "'Same hour yesterday' has both the lower MAE and the higher profit of the two naive forecasts."
+  }
+} else ""
+
 bat_desc  <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip efficiency, max %g full cycle per day",
                                       bat_set("cap_mwh"), bat_set("power_mw"),
                                       100 * bat_set("eff_rt"), bat_set("max_cycle")) else ""
@@ -382,10 +410,7 @@ Each day a `r bat_desc` plans its charging and selling for tomorrow using the fo
 and is then paid the actual prices. Backtest over `r bat_days` days. Perfect foresight
 plans with the actual prices and is the upper bound.
 
-LEAR earns significantly more than both naive forecasts (`r bat_p` vs same hour yesterday,
-`r bat_p_mix` vs weekly mix, t-test on daily profit with Newey-West errors). The weekly mix
-earns more than "same hour yesterday" even though its MAE is worse: a battery only needs the
-shape of the day, not the level.
+`r bat_test_txt` `r bat_shape_txt`
 
 No fees, no battery wear, hourly instead of 15-minute trading.
 
@@ -401,11 +426,12 @@ Rolling out-of-sample forecasts for every day of the test year (≈ 8,800 hourly
 
 | Model | MAE (€/MWh) | RMSE (€/MWh) |
 |---|---|---|
-| **LEAR** | **22.7** | **35.8** |
+| **BMT** | **21.7** | **34.4** |
+| LEAR | 22.7 | 35.8 |
 | Naive: same hour yesterday | 30.8 | 46.8 |
 | Naive: weekly mix | 34.2 | 51.4 |
 
-LEAR cuts the average error by about 26% compared with the best naive benchmark.
+BMT and LEAR cut the average error by about 30% and 26% compared with the best naive benchmark.
 
 :::
 
@@ -416,6 +442,12 @@ regression per hour, 24 regressions in total, each using all 24 prices from days
 and D-7 plus weekday dummies. Each forecast is estimated on the previous two years, with lambda
 chosen by BIC. Prices are transformed with asinh((p − median) / MAD) to handle spikes and
 negative prices.
+
+**BMT**, boosting with multiple testing (Kapetanios, Sarafidis & Ventouri), the method from my
+master's thesis: same inputs and transformation, but the prices are added one at a time. Each step
+adds the most significant price conditional on the ones already in, until none passes a
+multiple-testing threshold, then OLS on the selected prices. It picks about 4 of the 96 lagged
+prices per hour.
 
 **Live track record:** every morning before the noon auction, the forecast for the next day is
 saved and never changed afterwards.

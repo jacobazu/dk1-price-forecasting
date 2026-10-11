@@ -30,14 +30,16 @@ fc <- fc |>
   arrange(date, hour)
 
 
-# lp for one day: charge c1..c24, discharge d1..d24, state of charge s1..s24
+# lp for one day: charge c1..c24, discharge d1..d24, state of charge s1..s24,
+# u1..u24 = 1 if charging in that hour (0/1, so it can't charge and discharge at the same time)
 n  <- 24
 ic <- 1:n
 id <- n + 1:n
 soc <- 2 * n + 1:n
+iu <- 3 * n + 1:n
 
-A <- matrix(0, 0, 3 * n); dirs <- c(); rhs <- c()
-new_row <- function() numeric(3 * n)
+A <- matrix(0, 0, 4 * n); dirs <- c(); rhs <- c()
+new_row <- function() numeric(4 * n)
 
 # s_h = s_(h-1) + eff*c_h - d_h/eff, starts empty
 for (h in 1:n) {
@@ -57,9 +59,9 @@ A <- rbind(A, r); dirs <- c(dirs, "="); rhs <- c(rhs, 0)
 for (h in 1:n) {
   r <- new_row(); r[soc[h]] <- 1
   A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, cap_mwh)
-  r <- new_row(); r[ic[h]] <- 1
-  A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, power_mw)
-  r <- new_row(); r[id[h]] <- 1
+  r <- new_row(); r[ic[h]] <- 1; r[iu[h]] <- -power_mw         # c_h <= power * u_h
+  A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, 0)
+  r <- new_row(); r[id[h]] <- 1; r[iu[h]] <- power_mw          # d_h <= power * (1 - u_h)
   A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, power_mw)
 }
 
@@ -69,8 +71,8 @@ A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, cap_mwh * max_cycle)
 
 # best plan for given prices, MWh sold per hour (negative = bought)
 schedule <- function(price) {
-  obj <- c(-price, price, rep(0, n))
-  sol <- lp("max", obj, A, dirs, rhs)
+  obj <- c(-price, price, rep(0, 2 * n))
+  sol <- lp("max", obj, A, dirs, rhs, binary.vec = iu)
   if (sol$status != 0) stop("lp did not solve")
   sol$solution[id] - sol$solution[ic]
 }
@@ -91,12 +93,16 @@ profit <- bind_cols(tibble(date = days), as_tibble(do.call(rbind, profit)))
 years   <- nrow(profit) / 365
 perfect <- sum(profit$perfect)
 
+# mae of each forecast on the same days, to compare money with accuracy
+mae <- sapply(strategies, \(col) mean(abs(fc$actual - fc[[col]])))
+
 summary_tbl <- profit |>
   pivot_longer(-date, names_to = "strategy", values_to = "profit") |>
   group_by(strategy) |>
   summarise(total_eur        = round(sum(profit)),
             eur_per_mw_year  = round(sum(profit) / power_mw / years),
             share_of_perfect = round(sum(profit) / perfect, 3)) |>
+  mutate(mae = round(mae[strategy], 2)) |>
   arrange(desc(total_eur))
 
 print(summary_tbl)

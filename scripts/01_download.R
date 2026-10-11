@@ -3,6 +3,7 @@
 # hourly prices end 2025-09-30; 15-minute prices start 2025-10-01.
 
 source("R/get_eds.R")
+dir.create("data/raw", recursive = TRUE, showWarnings = FALSE)
 
 
 hourly <- get_eds("Elspotprices",   "2019-01-01", "2025-10-01")

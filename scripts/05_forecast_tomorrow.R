@@ -4,6 +4,7 @@
 
 library(readr)
 source("R/lear.R")
+source("R/bmt.R")
 
 prices <- readRDS("data/processed/prices_dk1_hourly.rds")
 
@@ -23,6 +24,9 @@ d        <- which(daily$date == target)
 
 # forecasts
 lear      <- lear_forecast_day(features, d)
+bmt       <- tryCatch(bmt_forecast_day(features, d), error = \(e) {
+  message("BMT failed: ", conditionMessage(e)); rep(NA_real_, 24)
+})                                 # lear is still saved if bmt fails
 naive_day <- features$P[d - 1, ]   # same hour yesterday
 
 new_forecast <- tibble(
@@ -30,6 +34,7 @@ new_forecast <- tibble(
   date              = target,
   hour              = 0:23,
   lear              = round(lear, 2),
+  bmt               = round(bmt, 2),
   naive_day         = round(naive_day, 2)
 )
 
