@@ -15,7 +15,10 @@ source("R/mcs.R")
 source("R/forecasts.R")
 source("R/postprocess.R")
 
-models <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
+# models shown on the dashboard: the three -X models, their ensemble and the weekly naive benchmark
+models <- c("ensemble", "bmtx", "learx", "xgbx", "naive_mix")
+# all single models are kept in the stored backtest file
+stored <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
 dir.create("results", showWarnings = FALSE)
 
 prices <- readRDS("data/processed/prices_dk1_hourly.rds")
@@ -41,7 +44,7 @@ if (all(file.exists(bt_files))) {
     group_by(date) |>
     filter(n() == 24) |>
     ungroup() |>
-    select(date, hour, actual, all_of(models)) |>
+    select(date, hour, actual, all_of(stored)) |>
     arrange(date, hour)
   write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
 }
@@ -53,8 +56,8 @@ cat("evaluation period:", format(min(fc$date)), "to", format(max(fc$date)), "-",
     n_distinct(backtest$date), "backtest days and", n_distinct(live$date), "live days\n")
 
 
-# accuracy
-mae_naive <- mean(abs(fc$actual - fc$naive_day))
+# accuracy, rmae relative to the weekly naive
+mae_naive <- mean(abs(fc$actual - fc$naive_mix))
 accuracy <- tibble(model = models) |>
   rowwise() |>
   mutate(mae  = mean(abs(fc$actual - fc[[model]])),
@@ -183,8 +186,9 @@ print(mcs_models)
 
 # bias correction and 80% intervals from past errors (R/postprocess.R), for every real model
 # from the day there are enough past errors. dm test: corrected vs raw on the same days
-post <- bind_rows(lapply(setdiff(models, c("naive_day", "naive_mix")), \(m) {
-  x  <- postprocess(fc, m)
+scale <- vol_scale(bind_rows(select(fc, date, hour, actual), actual), sort(unique(fc$date)))
+post <- bind_rows(lapply(setdiff(models, "naive_mix"), \(m) {
+  x  <- postprocess(fc, m, scale)
   dl <- x |>
     group_by(date) |>
     summarise(d = mean(abs(actual - corrected)) - mean(abs(actual - forecast)), .groups = "drop")
@@ -196,10 +200,17 @@ post <- bind_rows(lapply(setdiff(models, c("naive_day", "naive_mix")), \(m) {
          dm_p         = dm[["p"]],
          mean_error_raw  = mean(x$actual - x$forecast),
          mean_error_corr = mean(x$actual - x$corrected),
-         coverage     = mean(x$actual >= x$lower & x$actual <= x$upper),
-         below        = mean(x$actual < x$lower),
-         above        = mean(x$actual > x$upper),
-         width        = mean(x$upper - x$lower),
+         coverage     = mean(x$actual >= x$lower_s & x$actual <= x$upper_s),   # scaled band (shown)
+         below        = mean(x$actual < x$lower_s),
+         above        = mean(x$actual > x$upper_s),
+         width        = mean(x$upper_s - x$lower_s),
+         coverage_plain = mean(x$actual >= x$lower & x$actual <= x$upper),   # without scaling
+         width_plain    = mean(x$upper - x$lower),
+         # interval score (gneiting & raftery): width + penalty when outside, lower is better
+         score        = mean((x$upper_s - x$lower_s) + 2 / (1 - diff(q_probs)) *
+                               (pmax(x$lower_s - x$actual, 0) + pmax(x$actual - x$upper_s, 0))),
+         score_plain  = mean((x$upper - x$lower) + 2 / (1 - diff(q_probs)) *
+                               (pmax(x$lower - x$actual, 0) + pmax(x$actual - x$upper, 0))),
          nominal      = diff(q_probs))
 }))
 print(post)

@@ -1,4 +1,4 @@
-# forecasting tomorrows DK1 prices
+# forecasting tomorrows DK1 prices: BMT-X, LEAR-X, XGBoost-X, their ensemble and the weekly naive
 # must run before the noon auction on the day before delivery (danish time)
 
 
@@ -7,6 +7,7 @@ source("R/lear.R")
 source("R/bmt.R")
 source("R/exog.R")
 source("R/xmodels.R")
+source("R/forecasts.R")   # add_ensembles()
 has_xgb <- requireNamespace("xgboost", quietly = TRUE)
 if (has_xgb) source("R/xgb.R")
 
@@ -36,10 +37,6 @@ safe <- function(name, f) tryCatch(f(), error = \(e) {
   message(name, " failed: ", conditionMessage(e)); rep(NA_real_, 24)
 })
 
-# forecasts
-lear <- lear_forecast_day(features, d)
-bmt  <- safe("BMT", \() bmt_forecast_day(features, d))
-
 # -X models with what is known before the auction: neighbour prices from today and holidays
 # (no wind/solar, their day-ahead forecasts are published at 18:00)
 exog <- make_exog(daily$date,
@@ -56,9 +53,8 @@ xgb_day <- function(m, ex) {
     filter(model == m, chosen)
   xgb_forecast_day(features, d, exog = ex,
                    params = modifyList(xgb_params, list(max_depth = tun$max_depth)),
-                   rounds = tun$rounds)
+                   rounds = tun$rounds, seed = as.integer(target))
 }
-xgb  <- safe("XGBoost",   \() xgb_day("xgb", NULL))
 xgbx <- safe("XGBoost-X", \() xgb_day("xgbx", exog[c("nb", "hol")]))
 naive_day <- features$P[d - 1, ]   # same hour yesterday
 naive_mix <- if (features$dow[d] %in% c(1, 6, 7)) features$P[d - 7, ] else naive_day   # week ago on mon, sat, sun
@@ -67,15 +63,14 @@ new_forecast <- tibble(
   forecast_made_utc = format(Sys.time(), "%Y-%m-%d %H:%M", tz = "UTC"),
   date              = target,
   hour              = 0:23,
-  lear              = round(lear, 2),
-  bmt               = round(bmt, 2),
   bmtx              = round(bmtx, 2),
   learx             = round(learx, 2),
-  xgb               = round(xgb, 2),
   xgbx              = round(xgbx, 2),
   naive_day         = round(naive_day, 2),
   naive_mix         = round(naive_mix, 2)
-)
+) |>
+  add_ensembles() |>   # average of the three -X models, NA if one of them failed
+  mutate(across(starts_with("ensemble"), \(x) round(x, 2)))
 
 # append to live file but never overwrite forecast
 dir.create("forecasts", showWarnings = FALSE)

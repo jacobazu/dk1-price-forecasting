@@ -19,7 +19,8 @@ eff_rt    <- battery_setup$eff_rt
 max_cycle <- battery_setup$max_cycle
 
 # same forecasts as 10_evaluate.R: the backtest plus the live days saved before the auction
-models <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
+# models shown on the dashboard: the three -X models, their ensemble and the weekly naive benchmark
+models <- c("ensemble", "bmtx", "learx", "xgbx", "naive_mix")
 fc <- all_forecasts(models)
 
 

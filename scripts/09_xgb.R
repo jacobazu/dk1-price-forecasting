@@ -43,7 +43,8 @@ t0 <- Sys.time()
 tuning <- bind_rows(mclapply(seq_len(nrow(grid)), \(g) {
   params <- modifyList(xgb_params, list(max_depth = grid$depth[g]))
   err <- lapply(val_days, \(d) {
-    fc <- tryCatch(xgb_forecast_day(features, d, window, variants[[grid$model[g]]], params, rounds),
+    fc <- tryCatch(xgb_forecast_day(features, d, window, variants[[grid$model[g]]], params, rounds,
+                                    seed = as.integer(daily$date[d])),
                    error = \(e) NULL)
     if (is.null(fc)) NULL else abs(P[d, ] - fc)
   })
@@ -75,7 +76,7 @@ out <- mclapply(test_days, \(d) {
     b  <- best[best$model == v, ]
     fc <- tryCatch(xgb_forecast_day(features, d, window, variants[[v]],
                                     modifyList(xgb_params, list(max_depth = b$max_depth)),
-                                    b$rounds),
+                                    b$rounds, seed = as.integer(daily$date[d])),
                    error = \(e) NULL)
     if (is.null(fc)) NULL else tibble(date = daily$date[d], hour = 0:23, model = v, forecast = fc)
   }))
@@ -103,7 +104,7 @@ imp <- bind_rows(lapply(names(variants), \(v) {
   train <- (d - window):(d - 1)
   X <- xgb_design(features, train, variants[[v]])
   y <- transform_p(long(P[train, ]), median(P[train, ], na.rm = TRUE), mad(P[train, ], na.rm = TRUE))
-  set.seed(d)
+  set.seed(as.integer(daily$date[d]))
   m <- xgb.train(params = modifyList(xgb_params, list(max_depth = b$max_depth)),
                  data = xgb.DMatrix(X[!is.na(y), ], label = y[!is.na(y)]),
                  nrounds = b$rounds, verbose = 0)

@@ -69,8 +69,9 @@ xgb_design <- function(features, rows, exog = NULL) {
 
 # forecast all 24 hours of day d, trained on the `window` days before it
 # rounds can be a vector (for tuning), then one column per number of rounds
+# seed = the forecast date as a number, so the backtest and the live run use the same random rows
 xgb_forecast_day <- function(features, d, window = 730, exog = NULL, params = xgb_params,
-                             rounds = xgb_rounds, seed = d) {
+                             rounds = xgb_rounds, seed) {
   P     <- features$P
   train <- (d - window):(d - 1)
 

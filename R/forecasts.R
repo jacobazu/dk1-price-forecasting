@@ -6,6 +6,13 @@ library(dplyr)
 library(tidyr)
 library(readr)
 
+# ensemble = equal-weight average of the three -X models (multiple testing, lasso, trees)
+ensemble_parts <- list(ensemble = c("bmtx", "learx", "xgbx"))
+add_ensembles <- function(df) {
+  for (e in names(ensemble_parts)) df[[e]] <- rowMeans(as.matrix(df[, ensemble_parts[[e]]]))
+  df
+}
+
 all_forecasts <- function(models) {
   daily  <- build_daily(readRDS("data/processed/prices_dk1_hourly.rds"))
   P      <- as.matrix(daily[, -1])
@@ -13,12 +20,15 @@ all_forecasts <- function(models) {
                    actual = as.vector(t(P)))
 
   backtest <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |>
+    add_ensembles() |>
     select(date, hour, actual, all_of(models)) |>
     mutate(source = "backtest")
 
   live <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE,
                    col_types = cols(forecast_made_utc = col_character(), date = col_date(),
                                     hour = col_integer(), .default = col_double()))
+  for (m in setdiff(unlist(ensemble_parts), names(live))) live[[m]] <- NA_real_
+  live <- add_ensembles(live)
   for (m in setdiff(models, names(live))) live[[m]] <- NA_real_
   live <- live |>
     filter(date > max(backtest$date)) |>
