@@ -182,9 +182,9 @@ find_test <- function(tab, a, b) {
 acc_txt <- if (has_eval) {
   naive_best <- eval_acc$model[grepl("^naive", eval_acc$model)][1]
   real <- eval_acc |> filter(!grepl("^naive", model))
-  imp  <- round(100 * (1 - real$mae / eval_acc$mae[eval_acc$model == naive_best]))
-  paste0(paste(sprintf("%s cuts the average error by %d%%", long_labels[real$model], imp), collapse = ", "),
-         " compared with the best naive benchmark (", long_labels[[naive_best]], ").")
+  imp  <- round(100 * (1 - real$mae[1] / eval_acc$mae[eval_acc$model == naive_best]))
+  sprintf("%s cuts the average error by %d%% compared with the best naive benchmark (%s).",
+          long_labels[[real$model[1]]], imp, text_labels[[naive_best]])
 } else ""
 
 sig_txt <- if (has_eval && nrow(filter(eval_acc, !grepl("^naive", model))) >= 2) {
@@ -619,7 +619,7 @@ No fees, no battery wear, hourly instead of 15-minute trading.
 
 # Method
 
-## Row {height=44%}
+## Row {height=40%}
 
 ```{r}
 #| title: "Backtest accuracy"
@@ -632,28 +632,6 @@ if (has_eval) {
     knitr::kable(align = "lrrr")
 }
 ```
-
-::: {.card title="Is the difference significant?"}
-
-Rolling out-of-sample forecasts, `r eval_period`, all models on the same hours.
-
-`r acc_txt` `r sig_txt`
-
-```{r}
-if (has_eval) {
-  eval_tests |>
-    transmute(Comparison    = paste(long_labels[model_a], "vs", long_labels[model_b]),
-              `MAE diff`    = round(mae_diff, 2),
-              `DM p`        = p_tab(dm_p),
-              `GW p`        = p_tab(gw_p),
-              `Hours better / worse` = paste(hours_a_better, "/", hours_b_better)) |>
-    knitr::kable(align = "lrrrr")
-}
-```
-
-:::
-
-## Row {height=56%}
 
 ```{r}
 #| title: "Bias and shape of the day"
@@ -670,6 +648,32 @@ if (has_eval) {
     knitr::kable(align = "lrrrrrr")
 }
 ```
+
+## Row {height=60%}
+
+::: {.card title="Is the difference significant?"}
+
+Rolling out-of-sample forecasts, `r eval_period`, all models on the same hours.
+
+`r acc_txt` `r sig_txt`
+
+```{r}
+if (has_eval) {
+  real_m  <- eval_acc$model[!grepl("^naive", eval_acc$model)]
+  naive_b <- eval_acc$model[grepl("^naive", eval_acc$model)][1]
+  eval_tests |>
+    filter((model_a %in% real_m & model_b %in% real_m) |
+             (model_a == real_m[1] & model_b == naive_b) | (model_b == real_m[1] & model_a == naive_b)) |>
+    transmute(Comparison    = paste(long_labels[model_a], "vs", long_labels[model_b]),
+              `MAE diff`    = round(mae_diff, 2),
+              `DM p`        = p_tab(dm_p),
+              `GW p`        = p_tab(gw_p),
+              `Hours better / worse` = paste(hours_a_better, "/", hours_b_better)) |>
+    knitr::kable(align = "lrrrr")
+}
+```
+
+:::
 
 ::: {.card title="How it works"}
 
