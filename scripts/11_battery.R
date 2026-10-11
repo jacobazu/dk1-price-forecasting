@@ -5,19 +5,19 @@
 library(dplyr)
 library(tidyr)
 library(lubridate)
-library(lpSolve)
 library(readr)
 library(ggplot2)
 
-# battery
-cap_mwh   <- 2       # MWh
-power_mw  <- 1       # MW
-eff_rt    <- 0.90    # round trip
-max_cycle <- 1       # cycles per day
-eff       <- sqrt(eff_rt)
+source("R/battery.R")
+
+# battery, see R/battery.R
+cap_mwh   <- battery_setup$cap_mwh
+power_mw  <- battery_setup$power_mw
+eff_rt    <- battery_setup$eff_rt
+max_cycle <- battery_setup$max_cycle
 
 # backtest forecasts from 04_lear.R, 06_bmt.R, 08_bmtx.R and 09_xgb.R, same days for all
-# bmtx and learx with all four groups
+# bmtx and learx with neighbour prices and holidays (known before the auction)
 wide <- function(f, combo = NULL) {
   x <- readRDS(f)
   if (!is.null(combo)) x <- x[x$combo == combo, ]
@@ -26,7 +26,7 @@ wide <- function(f, combo = NULL) {
 fc <- readRDS("data/processed/forecasts_lear.rds") |>
   inner_join(select(readRDS("data/processed/forecasts_bmt.rds"), date, hour, bmt),
              by = c("date", "hour")) |>
-  inner_join(wide("data/processed/forecasts_bmtx.rds", "nb+wind+solar+hol"), by = c("date", "hour")) |>
+  inner_join(wide("data/processed/forecasts_bmtx.rds", "nb+hol"), by = c("date", "hour")) |>
   inner_join(wide("data/processed/forecasts_xgb.rds"), by = c("date", "hour"))
 
 # naive, same hour yesterday
@@ -40,53 +40,7 @@ fc <- fc |>
   arrange(date, hour)
 
 
-# lp for one day: charge c1..c24, discharge d1..d24, state of charge s1..s24,
-# u1..u24 = 1 if charging in that hour (0/1, so it can't charge and discharge at the same time)
-n  <- 24
-ic <- 1:n
-id <- n + 1:n
-soc <- 2 * n + 1:n
-iu <- 3 * n + 1:n
-
-A <- matrix(0, 0, 4 * n); dirs <- c(); rhs <- c()
-new_row <- function() numeric(4 * n)
-
-# s_h = s_(h-1) + eff*c_h - d_h/eff, starts empty
-for (h in 1:n) {
-  r <- new_row()
-  r[soc[h]] <- 1
-  if (h > 1) r[soc[h - 1]] <- -1
-  r[ic[h]] <- -eff
-  r[id[h]] <- 1 / eff
-  A <- rbind(A, r); dirs <- c(dirs, "="); rhs <- c(rhs, 0)
-}
-
-# empty at end of day
-r <- new_row(); r[soc[n]] <- 1
-A <- rbind(A, r); dirs <- c(dirs, "="); rhs <- c(rhs, 0)
-
-# limits
-for (h in 1:n) {
-  r <- new_row(); r[soc[h]] <- 1
-  A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, cap_mwh)
-  r <- new_row(); r[ic[h]] <- 1; r[iu[h]] <- -power_mw         # c_h <= power * u_h
-  A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, 0)
-  r <- new_row(); r[id[h]] <- 1; r[iu[h]] <- power_mw          # d_h <= power * (1 - u_h)
-  A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, power_mw)
-}
-
-# cycles
-r <- new_row(); r[id] <- 1
-A <- rbind(A, r); dirs <- c(dirs, "<="); rhs <- c(rhs, cap_mwh * max_cycle)
-
-# best plan for given prices, MWh sold per hour (negative = bought)
-schedule <- function(price) {
-  obj <- c(-price, price, rep(0, 2 * n))
-  sol <- lp("max", obj, A, dirs, rhs, binary.vec = iu)
-  if (sol$status != 0) stop("lp did not solve")
-  sol$solution[id] - sol$solution[ic]
-}
-
+lp_def <- battery_lp()
 
 # plan with each forecast, paid with actual prices
 models     <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
@@ -95,7 +49,7 @@ days <- unique(fc$date)
 
 profit <- lapply(days, \(dd) {
   x <- fc[fc$date == dd, ]
-  sapply(strategies, \(col) sum(x$actual * schedule(x[[col]])))
+  sapply(strategies, \(col) battery_profit(x[[col]], x$actual, lp_def))
 })
 profit <- bind_cols(tibble(date = days), as_tibble(do.call(rbind, profit)))
 

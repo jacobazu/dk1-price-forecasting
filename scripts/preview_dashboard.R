@@ -24,6 +24,8 @@ had_file <- file.exists(file_fc)
 backup   <- tempfile(fileext = ".csv")
 if (had_file) file.copy(file_fc, backup)
 
+Sys.setenv(DK1_PREVIEW = "true")   # lets 05 write a forecast after noon, the file is put back below
+
 tryCatch({
   steps <- c(if (update_prices) c("01_download.R", "02_clean.R"), "05_forecast_tomorrow.R")
   for (s in steps) {
@@ -38,6 +40,7 @@ tryCatch({
   browseURL(normalizePath("index.html"))
   message("\nDone: the dashboard is open in your browser.")
 }, finally = {
+  Sys.unsetenv("DK1_PREVIEW")
   # put forecast file back like before
   if (had_file) {
     file.copy(backup, file_fc, overwrite = TRUE)

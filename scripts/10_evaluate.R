@@ -1,9 +1,9 @@
-# evaluation of the backtest forecasts, all models on the same hours
-# accuracy (mae, rmse, rmae), diebold-mariano and giacomini-white tests,
-# bias (mincer-zarnowitz), shape of the day (cheapest / most expensive hour),
-# and model confidence sets over the 16 BMT-X combinations and over the main models
-# needs forecasts_lear.rds (04_lear.R), forecasts_bmt.rds (06_bmt.R), forecasts_bmtx.rds (08_bmtx.R)
-# and forecasts_xgb.rds (09_xgb.R)
+# evaluation of all forecasts: the backtest, plus every live day saved before the auction since then
+# accuracy (mae, rmse, rmae), diebold-mariano and giacomini-white tests, bias (mincer-zarnowitz),
+# shape of the day (cheapest / most expensive hour) and a model confidence set over the models
+# runs every morning on github, so the results grow by one live day each day
+# the backtest forecasts are stored in results/backtest_forecasts.csv, made from the output of
+# 04_lear.R, 06_bmt.R, 08_bmtx.R and 09_xgb.R when those files are there (on my pc, not on github)
 # writes small csv files to results/ that the dashboard reads
 
 library(dplyr)
@@ -11,43 +11,61 @@ library(tidyr)
 library(readr)
 library(lubridate)
 source("R/lear.R")
+source("R/mcs.R")
 
-# forecasts and actual prices
+models <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
+dir.create("results", showWarnings = FALSE)
+
 prices <- readRDS("data/processed/prices_dk1_hourly.rds")
 daily  <- build_daily(prices)
 P      <- as.matrix(daily[, -1])
+actual <- tibble(date = rep(daily$date, each = 24), hour = rep(0:23, times = nrow(P)),
+                 actual = as.vector(t(P)))
 
-naive_day <- tibble(date      = rep(daily$date + 1, each = 24),
-                    hour      = rep(0:23, times = nrow(P)),
-                    naive_day = as.vector(t(P)))
 
-fc <- readRDS("data/processed/forecasts_lear.rds") |>
-  select(date, hour, actual, lear, naive_mix) |>
-  inner_join(select(readRDS("data/processed/forecasts_bmt.rds"), date, hour, bmt),
-             by = c("date", "hour")) |>
-  inner_join(naive_day, by = c("date", "hour"))
+# backtest forecasts, rebuilt when the backtest output is there
+bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "bmtx", "xgb"), ".rds")
+if (all(file.exists(bt_files))) {
+  wide <- function(x) x |> select(date, hour, model, forecast) |>
+    pivot_wider(names_from = model, values_from = forecast)
+  backtest <- readRDS(bt_files[1]) |>
+    select(date, hour, actual, lear, naive_mix) |>
+    inner_join(select(readRDS(bt_files[2]), date, hour, bmt), by = c("date", "hour")) |>
+    # BMT-X and LEAR-X with what is known before the auction (no wind/solar, published at 18:00)
+    inner_join(wide(filter(readRDS(bt_files[3]), combo == "nb+hol")), by = c("date", "hour")) |>
+    inner_join(wide(readRDS(bt_files[4])), by = c("date", "hour")) |>
+    inner_join(transmute(actual, date = date + 1, hour, naive_day = actual), by = c("date", "hour")) |>
+    drop_na() |>
+    group_by(date) |>
+    filter(n() == 24) |>
+    ungroup() |>
+    select(date, hour, actual, all_of(models)) |>
+    arrange(date, hour)
+  write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
+}
+backtest <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |>
+  mutate(source = "backtest")
 
-# BMT-X and LEAR-X with all four groups as extra models
-bmtx <- readRDS("data/processed/forecasts_bmtx.rds")
-all_groups <- "nb+wind+solar+hol"
-fc <- fc |>
-  inner_join(bmtx |> filter(combo == all_groups) |>
-               select(date, hour, model, forecast) |>
-               pivot_wider(names_from = model, values_from = forecast),
-             by = c("date", "hour")) |>
-  inner_join(readRDS("data/processed/forecasts_xgb.rds") |>
-               select(date, hour, model, forecast) |>
-               pivot_wider(names_from = model, values_from = forecast),
-             by = c("date", "hour")) |>
+# live days after the backtest, only days where every model was saved before the auction
+live <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE,
+                 col_types = cols(forecast_made_utc = col_character(), date = col_date(),
+                                  hour = col_integer(), .default = col_double()))
+for (m in setdiff(models, names(live))) live[[m]] <- NA_real_
+live <- live |>
+  filter(date > max(backtest$date)) |>
+  inner_join(actual, by = c("date", "hour")) |>
+  select(date, hour, actual, all_of(models)) |>
   drop_na() |>
   group_by(date) |>
   filter(n() == 24) |>
   ungroup() |>
+  mutate(source = "live")
+
+fc <- bind_rows(backtest, live) |>
   arrange(date, hour)
 
-models <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
-cat("evaluation period:", format(min(fc$date)), "to", format(max(fc$date)),
-    "-", n_distinct(fc$date), "days,", nrow(fc), "hours\n")
+cat("evaluation period:", format(min(fc$date)), "to", format(max(fc$date)), "-",
+    n_distinct(backtest$date), "backtest days and", n_distinct(live$date), "live days\n")
 
 
 # accuracy
@@ -59,7 +77,10 @@ accuracy <- tibble(model = models) |>
          rmae = mae / mae_naive) |>
   ungroup() |>
   mutate(n_hours = nrow(fc), n_days = n_distinct(fc$date),
-         from = min(fc$date), to = max(fc$date)) |>
+         from = min(fc$date), to = max(fc$date),
+         n_backtest_days = n_distinct(fc$date[fc$source == "backtest"]),
+         backtest_to     = max(fc$date[fc$source == "backtest"]),
+         n_live_days     = n_distinct(fc$date[fc$source == "live"])) |>
   arrange(mae)
 print(accuracy)
 
@@ -169,78 +190,14 @@ shape <- bind_rows(lapply(models, \(m) {
 print(shape)
 
 
-# model confidence set (hansen, lunde & nason 2011) over the 16 BMT-X combinations, LEAR-X and LEAR
-# loss = daily average absolute error, Tmax statistic, circular block bootstrap with 7-day blocks.
-# the set at 10% = the combinations that can't be told apart from the best one
-mcs <- function(L, B = 2000, block = 7, seed = 1) {
-  set.seed(seed)
-  n <- nrow(L)
-  idx <- replicate(B, {
-    starts <- sample.int(n, ceiling(n / block), replace = TRUE)
-    (as.vector(outer(0:(block - 1), starts, "+")) - 1) %% n + 1
-  })[1:n, ]
-  boot_means_all <- apply(idx, 2, \(i) colMeans(L[i, , drop = FALSE]))   # models x B
-
-  alive <- colnames(L)
-  p_run <- 0
-  out   <- tibble(model = character(), mcs_p = numeric())
-  while (length(alive) > 1) {
-    lbar  <- colMeans(L[, alive, drop = FALSE])
-    d_i   <- lbar - mean(lbar)
-    bm    <- boot_means_all[alive, , drop = FALSE]
-    bd_i  <- sweep(bm, 2, colMeans(bm))                    # bootstrap d_i
-    v_i   <- rowMeans((bd_i - d_i)^2)
-    t_i   <- d_i / sqrt(v_i)
-    t_max <- max(t_i)
-    boot  <- apply((bd_i - d_i) / sqrt(v_i), 2, max)
-    p_run <- max(p_run, mean(boot >= t_max))
-    worst <- alive[which.max(t_i)]
-    out   <- bind_rows(out, tibble(model = worst, mcs_p = p_run))
-    alive <- setdiff(alive, worst)
-  }
-  bind_rows(out, tibble(model = alive, mcs_p = 1))
-}
-
-combo_fc <- bmtx |>
-  semi_join(fc, by = c("date", "hour")) |>
-  mutate(name = if_else(model == "bmtx", paste0("bmtx:", combo), "learx")) |>
-  select(date, hour, name, forecast, actual)
-L <- bind_rows(combo_fc,
-               fc |> transmute(date, hour, name = "lear", forecast = lear, actual)) |>
-  group_by(date, name) |>
-  summarise(loss = mean(abs(actual - forecast)), .groups = "drop") |>
-  pivot_wider(names_from = name, values_from = loss) |>
-  select(-date) |>
-  as.matrix()
-mcs_res <- mcs(L)
-
-combo_tab <- combo_fc |>
-  filter(startsWith(name, "bmtx:")) |>
-  group_by(name) |>
-  summarise(mae = mean(abs(actual - forecast)), rmse = sqrt(mean((actual - forecast)^2)),
-            .groups = "drop") |>
-  mutate(rmae  = mae / mae_naive,
-         combo = sub("^bmtx:", "", name)) |>
-  left_join(mcs_res, by = c("name" = "model")) |>
-  mutate(nb    = grepl("nb", combo), wind = grepl("wind", combo),
-         solar = grepl("solar", combo), hol = grepl("hol", combo),
-         in_mcs = mcs_p >= 0.10) |>
-  select(combo, nb, wind, solar, hol, mae, rmse, rmae, mcs_p, in_mcs) |>
-  arrange(mae)
-print(combo_tab, n = Inf)
-print(mcs_res, n = Inf)
-
-# second set over the main models (same hours as the accuracy table)
+# model confidence set over the models (same hours as the accuracy table)
 L_models <- sapply(models, \(m) daily_loss(m, "abs"))
 mcs_models <- mcs(L_models) |>
   mutate(in_mcs = mcs_p >= 0.10)
 print(mcs_models)
 
-dir.create("results", showWarnings = FALSE)
 write_csv(accuracy, "results/eval_accuracy.csv")
 write_csv(tests,    "results/eval_tests.csv")
 write_csv(bias,     "results/eval_bias.csv")
 write_csv(shape,    "results/eval_shape.csv")
-write_csv(combo_tab, "results/bmtx_combos.csv")
-write_csv(mcs_res,  "results/mcs.csv")
 write_csv(mcs_models, "results/mcs_models.csv")

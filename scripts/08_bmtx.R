@@ -2,7 +2,7 @@
 # dk1 price lags (D-1, D-2, D-3, D-7) are always candidates, weekday dummies always included
 # groups: neighbour prices (DE, DK2, NO2, SE3, SE4 on D-1), wind forecasts (offshore + onshore
 # for D), solar forecast (D), holidays (D and D-1)
-# LEAR-X = lasso on the full pool (all groups), to compare lasso and multiple testing fairly
+# LEAR-X = lasso on the same pools, to compare lasso and multiple testing fairly
 # needs the files from 02_clean.R and 07_download_exog.R
 
 library(dplyr)
@@ -13,6 +13,7 @@ library(parallel)
 source("R/lear.R")
 source("R/bmt.R")
 source("R/exog.R")
+source("R/mcs.R")
 
 prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
 daily    <- build_daily(prices)
@@ -29,6 +30,11 @@ groups   <- c("nb", "wind", "solar", "hol")
 combos   <- expand.grid(rep(list(c(FALSE, TRUE)), 4))
 names(combos) <- groups
 combo_id <- apply(combos, 1, \(r) if (!any(r)) "prices" else paste(groups[r], collapse = "+"))
+
+# lear-x for the groups known before the auction, and for all groups. the wind/solar day-ahead
+# forecasts are published at 18:00 on D-1, after the noon auction, so combinations with wind or
+# solar are a study of what that information is worth, not something that can run live
+learx_combos <- c("nb+hol", "nb+wind+solar+hol")
 
 window <- 730
 pval   <- 0.05
@@ -84,13 +90,15 @@ forecast_day <- function(d) {
         n_hol = sum(grp[sel] == "hol"))
     }
 
-    # LEAR-X, lasso with all groups (all weekday dummies as in LEAR)
-    Xl <- cbind(Xtr, features$X_dow[keep, ])
-    m  <- fit_lasso_bic(Xl, y)
-    xl <- matrix(c(X_full[d, ], features$X_dow[d, ]), nrow = 1)
-    rows[[length(rows) + 1]] <- tibble(
-      date = daily$date[d], hour = h - 1, model = "learx", combo = "nb+wind+solar+hol",
-      forecast = as.numeric(inverse_p(predict(m$fit, xl, s = m$lambda), med, s)))
+    # LEAR-X, lasso on the same pool (all weekday dummies as in LEAR)
+    for (lc in learx_combos) {
+      cols <- which(grp %in% c("prices", strsplit(lc, "+", fixed = TRUE)[[1]]))
+      m  <- fit_lasso_bic(cbind(Xtr[, cols], features$X_dow[keep, ]), y)
+      xl <- matrix(c(X_full[d, cols], features$X_dow[d, ]), nrow = 1)
+      rows[[length(rows) + 1]] <- tibble(
+        date = daily$date[d], hour = h - 1, model = "learx", combo = lc,
+        forecast = as.numeric(inverse_p(predict(m$fit, xl, s = m$lambda), med, s)))
+    }
   }
   bind_rows(rows)
 }
@@ -121,3 +129,52 @@ fc |>
   group_by(combo) |>
   summarise(across(c(n_sel, n_prices, n_nb, n_wind, n_solar, n_hol), mean), .groups = "drop") |>
   write_csv("results/bmtx_selection.csv")
+
+
+# which groups help: mae of every combination and a model confidence set over the 16 combinations,
+# LEAR-X (all groups) and LEAR, on the same days. loss = daily average absolute error.
+# combinations with wind or solar use forecasts published after the auction, so this is a study
+# of what each group is worth, not a set of models that can run live
+lear <- readRDS("data/processed/forecasts_lear.rds") |>
+  transmute(date, hour, name = "lear", forecast = lear, actual)
+study <- fc |>
+  filter(model == "bmtx" | combo == "nb+wind+solar+hol") |>
+  mutate(name = if_else(model == "bmtx", paste0("bmtx:", combo), "learx")) |>
+  select(date, hour, name, forecast, actual) |>
+  bind_rows(lear) |>
+  group_by(date) |>
+  filter(n_distinct(name) == 18, n() == 18 * 24) |>   # days with every model and hour
+  ungroup()
+
+naive <- tibble(date = rep(daily$date + 1, each = 24), hour = rep(0:23, times = nrow(P)),
+                naive_day = as.vector(t(P))) |>
+  semi_join(study, by = c("date", "hour")) |>
+  inner_join(distinct(study, date, hour, actual), by = c("date", "hour"))
+mae_naive <- mean(abs(naive$actual - naive$naive_day))
+
+L <- study |>
+  group_by(date, name) |>
+  summarise(loss = mean(abs(actual - forecast)), .groups = "drop") |>
+  tidyr::pivot_wider(names_from = name, values_from = loss) |>
+  select(-date) |>
+  as.matrix()
+mcs_res <- mcs(L)
+
+combo_tab <- study |>
+  filter(startsWith(name, "bmtx:")) |>
+  group_by(name) |>
+  summarise(mae = mean(abs(actual - forecast)), rmse = sqrt(mean((actual - forecast)^2)),
+            .groups = "drop") |>
+  mutate(rmae  = mae / mae_naive,
+         combo = sub("^bmtx:", "", name)) |>
+  left_join(mcs_res, by = c("name" = "model")) |>
+  mutate(nb    = grepl("nb", combo), wind = grepl("wind", combo),
+         solar = grepl("solar", combo), hol = grepl("hol", combo),
+         in_mcs = mcs_p >= 0.10,
+         from = min(study$date), to = max(study$date)) |>
+  select(combo, nb, wind, solar, hol, mae, rmse, rmae, mcs_p, in_mcs, from, to) |>
+  arrange(mae)
+print(combo_tab, n = Inf)
+
+write_csv(combo_tab, "results/bmtx_combos.csv")
+write_csv(mcs_res, "results/mcs.csv")

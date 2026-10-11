@@ -34,7 +34,34 @@ fill_gaps <- function(df, cols) {
   df
 }
 
+# danish holidays (easter from the gregorian algorithm)
+easter <- function(y) {
+  a <- y %% 19; b <- y %/% 100; c <- y %% 100
+  d <- b %/% 4; e <- b %% 4; f <- (b + 8) %/% 25; g <- (b - f + 1) %/% 3
+  h <- (19 * a + b - d - g + 15) %% 30
+  i <- c %/% 4; k <- c %% 4
+  l <- (32 + 2 * e + 2 * i - h - k) %% 7
+  m <- (a + 11 * h + 22 * l) %/% 451
+  month <- (h + l - 7 * m + 114) %/% 31
+  day   <- ((h + l - 7 * m + 114) %% 31) + 1
+  make_date(y, month, day)
+}
+
+dk_holidays <- function(years) {
+  bind_rows(lapply(years, \(y) {
+    e <- easter(y)
+    tibble(date = c(make_date(y, 1, 1), e - 3, e - 2, e, e + 1,
+                    if (y < 2024) e + 26,             # store bededag, abolished from 2024
+                    e + 39, e + 49, e + 50,
+                    make_date(y, 6, 5), make_date(y, 12, 24), make_date(y, 12, 25),
+                    make_date(y, 12, 26), make_date(y, 12, 31)))
+  })) |>
+    distinct() |>
+    arrange(date)
+}
+
 # all exogenous candidates, raw (not transformed), per group
+# wind_solar = NULL leaves wind and solar out (the live forecast, see 08_bmtx.R)
 make_exog <- function(dates, neighbours, wind_solar, holidays) {
   areas <- c("DE", "DK2", "NO2", "SE3", "SE4")
   nb <- do.call(cbind, lapply(areas, \(a) {
@@ -43,11 +70,14 @@ make_exog <- function(dates, neighbours, wind_solar, holidays) {
     m
   }))
 
-  ws <- fill_gaps(wind_solar, c("fc_offshore_wind", "fc_onshore_wind", "fc_solar"))
-  wind <- cbind(to_daily(ws, "fc_offshore_wind", dates), to_daily(ws, "fc_onshore_wind", dates))
-  colnames(wind) <- c(paste0("offwind_d0_h", 0:23), paste0("onwind_d0_h", 0:23))
-  solar <- to_daily(ws, "fc_solar", dates)
-  colnames(solar) <- paste0("solar_d0_h", 0:23)
+  wind <- solar <- NULL
+  if (!is.null(wind_solar)) {
+    ws <- fill_gaps(wind_solar, c("fc_offshore_wind", "fc_onshore_wind", "fc_solar"))
+    wind <- cbind(to_daily(ws, "fc_offshore_wind", dates), to_daily(ws, "fc_onshore_wind", dates))
+    colnames(wind) <- c(paste0("offwind_d0_h", 0:23), paste0("onwind_d0_h", 0:23))
+    solar <- to_daily(ws, "fc_solar", dates)
+    colnames(solar) <- paste0("solar_d0_h", 0:23)
+  }
 
   hol <- cbind(hol_d0 = as.numeric(dates %in% holidays$date),
                hol_d1 = as.numeric((dates - 1) %in% holidays$date))
@@ -59,6 +89,7 @@ make_exog <- function(dates, neighbours, wind_solar, holidays) {
 # their own median and mad per area), wind and solar standardised, holidays as they are
 transform_exog <- function(exog, train) {
   block <- function(X, f) {
+    if (is.null(X)) return(NULL)
     series <- sub("_h[0-9]+$", "", colnames(X))
     for (s in unique(series)) {
       j <- series == s

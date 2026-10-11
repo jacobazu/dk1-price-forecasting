@@ -19,8 +19,8 @@ long <- function(M) as.vector(t(M))
 
 # one row per day and hour, for the days in rows
 # prices: same hour on D-1, D-2, D-3, D-7 and the level and range of D-1
-# exog (optional): neighbour prices same hour D-1 + their daily mean,
-# wind and solar forecasts for the hour + daily mean, holidays
+# exog (optional): neighbour prices same hour D-1 + their daily mean, holidays,
+# and wind and solar forecasts for the hour + daily mean if exog has them
 xgb_design <- function(features, rows, exog = NULL) {
   P   <- features$P
   lag <- function(k) lag_days(P, k)[rows, , drop = FALSE]
@@ -50,13 +50,18 @@ xgb_design <- function(features, rows, exog = NULL) {
     colnames(m) <- paste0(a, c("_d1", "_d1_mean"))
     m
   }))
-  ws <- do.call(cbind, lapply(list(c("offwind_d0", "offwind"), c("onwind_d0", "onwind"),
-                                   c("solar_d0", "solar")), \(v) {
-    M <- if (v[2] == "solar") exog$solar else exog$wind
-    m <- series(M, v[1])
-    colnames(m) <- paste0(v[2], c("", "_mean"))
-    m
-  }))
+  # wind and solar only if they are in the list (the day-ahead forecasts are published at 18:00,
+  # after the auction, so they are left out of the honest version)
+  ws <- NULL
+  if (!is.null(exog$wind)) {
+    ws <- do.call(cbind, lapply(list(c("offwind_d0", "offwind"), c("onwind_d0", "onwind"),
+                                     c("solar_d0", "solar")), \(v) {
+      M <- if (v[2] == "solar") exog$solar else exog$wind
+      m <- series(M, v[1])
+      colnames(m) <- paste0(v[2], c("", "_mean"))
+      m
+    }))
+  }
   cbind(X, nb, ws,
         hol_d0 = rep24(exog$hol[rows, "hol_d0"]),
         hol_d1 = rep24(exog$hol[rows, "hol_d1"]))

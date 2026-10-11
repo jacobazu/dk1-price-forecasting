@@ -1,4 +1,4 @@
-# XGBoost backtest, prices only (XGB) and with all exogenous groups (XGB-X)
+# XGBoost backtest, prices only (XGB) and with neighbour prices and holidays (XGB-X)
 # one pooled model for all 24 hours, 2 year rolling window, retrained every day like LEAR and BMT
 # tree depth and number of rounds are tuned on apr-sep 2025 (before the test period starts),
 # then kept fixed for the whole test period
@@ -25,7 +25,10 @@ exog <- make_exog(daily$date,
 
 window <- 730
 cores  <- max(1, detectCores() - 1)
-variants <- list(xgb = NULL, xgbx = exog)
+# XGB-X only gets what is known before the noon auction on D-1: neighbour prices from D-1 and
+# holidays. the wind/solar day-ahead forecasts on energi data service are published at 18:00 on
+# D-1, after the auction, so using them would be look-ahead
+variants <- list(xgb = NULL, xgbx = exog[c("nb", "hol")])
 
 
 # tuning: every third day of apr-sep 2025
@@ -56,6 +59,11 @@ best <- tuning |>
   slice_min(mae, n = 1, with_ties = FALSE) |>
   ungroup()
 print(best)
+
+dir.create("results", showWarnings = FALSE)
+write_csv(mutate(tuning, chosen = paste(model, max_depth, rounds) %in%
+                   paste(best$model, best$max_depth, best$rounds)),
+          "results/xgb_tuning.csv")
 
 
 # test period, same days as the other models
@@ -103,8 +111,4 @@ imp <- bind_rows(lapply(names(variants), \(v) {
     transmute(model = v, feature = Feature, gain = Gain)
 }))
 
-dir.create("results", showWarnings = FALSE)
-write_csv(mutate(tuning, chosen = paste(model, max_depth, rounds) %in%
-                   paste(best$model, best$max_depth, best$rounds)),
-          "results/xgb_tuning.csv")
 write_csv(imp, "results/xgb_importance.csv")
