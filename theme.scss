@@ -60,6 +60,9 @@ body,
   padding-top: 1rem;
 }
 
+// long text scrolls inside the card instead of being cut off
+.quarto-dashboard .card-body { overflow-y: auto; }
+
 // remove expand button on cards
 .bslib-full-screen-enter { display: none !important; }
 

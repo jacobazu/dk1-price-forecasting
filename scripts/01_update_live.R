@@ -61,23 +61,26 @@ cat("Live prices:", format(min(live$time)), "to", format(max(live$time)),
 
 # neighbour prices for BMT-X / LEAR-X / XGB-X, same rolling window
 # (the file was started from 07_download_exog.R, after that only the newest days are added)
-areas   <- c("DE", "DK2", "NO2", "SE3", "SE4")
-file_nb <- "live/neighbours_live.csv"
-nb_live <- read_csv(file_nb, col_types = cols(time = col_datetime(), .default = col_double()))
-from_nb <- as_date(max(nb_live$time)) - 1
+# if this fails the dk1 prices above are still saved, the -X models just get no forecast
+tryCatch({
+  areas   <- c("DE", "DK2", "NO2", "SE3", "SE4")
+  file_nb <- "live/neighbours_live.csv"
+  nb_live <- read_csv(file_nb, col_types = cols(time = col_datetime(), .default = col_double()))
+  from_nb <- as_date(max(nb_live$time)) - 1
 
-nb_new <- get_eds("DayAheadPrices", format(from_nb), format(Sys.Date() + 2), area = areas) |>
-  mutate(time = floor_date(ymd_hms(TimeUTC, tz = "UTC"), "hour")) |>
-  group_by(time, area = PriceArea) |>
-  summarise(price = mean(DayAheadPriceEUR), n = n(), .groups = "drop") |>
-  filter(n == 4) |>
-  select(-n) |>
-  tidyr::pivot_wider(names_from = area, values_from = price, names_prefix = "price_")
+  nb_new <- get_eds("DayAheadPrices", format(from_nb), format(Sys.Date() + 2), area = areas) |>
+    mutate(time = floor_date(ymd_hms(TimeUTC, tz = "UTC"), "hour")) |>
+    group_by(time, area = PriceArea) |>
+    summarise(price = mean(DayAheadPriceEUR), n = n(), .groups = "drop") |>
+    filter(n == 4) |>
+    select(-n) |>
+    tidyr::pivot_wider(names_from = area, values_from = price, names_prefix = "price_")
 
-nb_live <- bind_rows(nb_new, nb_live) |>
-  distinct(time, .keep_all = TRUE) |>
-  filter(time >= cutoff) |>
-  arrange(time)
+  nb_live <- bind_rows(nb_new, nb_live) |>
+    distinct(time, .keep_all = TRUE) |>
+    filter(time >= cutoff) |>
+    arrange(time)
 
-write_csv(nb_live, file_nb)
-cat("Live neighbour prices:", format(min(nb_live$time)), "to", format(max(nb_live$time)), "UTC\n")
+  write_csv(nb_live, file_nb)
+  cat("Live neighbour prices:", format(min(nb_live$time)), "to", format(max(nb_live$time)), "UTC\n")
+}, error = \(e) message("Neighbour prices not updated: ", conditionMessage(e)))

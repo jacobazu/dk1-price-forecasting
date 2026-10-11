@@ -1,4 +1,5 @@
-# idea: every morning; download prices, forecast tomorrow, save the forecast, rebuild the dashboard.
+# every morning: download prices, forecast tomorrow, save the forecast, update the evaluation with
+# the newest live day, rebuild the dashboard
 
 name: Daily DK1 forecast
 
@@ -55,12 +56,20 @@ jobs:
         if: github.event_name != 'push'
         run: Rscript scripts/05_forecast_tomorrow.R
 
-      - name: Save forecast to the repository
+      # backtest + every live day so far, so the numbers on the dashboard grow every day
+      - name: Evaluate forecasts and battery
+        if: github.event_name != 'push'
+        continue-on-error: true   # the forecast is still saved if this fails
+        run: |
+          Rscript scripts/10_evaluate.R
+          Rscript scripts/11_battery.R
+
+      - name: Save forecast and results to the repository
         if: github.event_name != 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add forecasts/forecasts_live.csv live/prices_dk1_live.csv live/neighbours_live.csv
+          git add forecasts/forecasts_live.csv live/prices_dk1_live.csv live/neighbours_live.csv results/
           # same target day as in 05_forecast_tomorrow.R: tomorrow in danish time
           target=$(TZ=Europe/Copenhagen date -d tomorrow +%F)
           if git diff --cached --quiet -- forecasts/forecasts_live.csv; then

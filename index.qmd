@@ -24,6 +24,7 @@ library(readr)
 library(lubridate)
 library(plotly)
 source("R/battery.R")
+source("R/postprocess.R")
 
 Sys.setlocale("LC_TIME", "C")   # English day and month names, also on a Danish computer
 
@@ -88,9 +89,10 @@ models <- intersect(names(model_labels), names(fc))
 
 # buttons above a chart: one per model plus "All", actual prices are always shown
 # html buttons instead of plotly's own, so they can be styled in theme.scss
-model_buttons <- function(p, models, n_fixed = 1) {
-  vis <- c(lapply(models, \(m) c(rep(TRUE, n_fixed), models == m)),
-           list(rep(TRUE, length(models) + n_fixed)))
+# per_model = traces per model (band + line), "All" shows only the lines
+model_buttons <- function(p, models, n_fixed = 1, per_model = 1) {
+  vis <- c(lapply(models, \(m) c(rep(TRUE, n_fixed), rep(models == m, each = per_model))),
+           list(c(rep(TRUE, n_fixed), rep(c(rep(FALSE, per_model - 1), TRUE), length(models)))))
   htmlwidgets::onRender(p, "
     function(el, x, data) {
       el.style.position = 'relative';
@@ -112,7 +114,7 @@ model_buttons <- function(p, models, n_fixed = 1) {
     data = list(labels = c(unname(model_labels[models]), "All"), visible = vis))
 }
 
-chart_layout <- function(p, models = NULL, xtitle = "", n_fixed = 1) {
+chart_layout <- function(p, models = NULL, xtitle = "", n_fixed = 1, per_model = 1) {
   p <- p |>
     layout(paper_bgcolor = "rgba(0,0,0,0)",
            plot_bgcolor  = "rgba(0,0,0,0)",
@@ -127,7 +129,7 @@ chart_layout <- function(p, models = NULL, xtitle = "", n_fixed = 1) {
                              font = list(color = ink)),
            margin = list(t = 50)) |>
     config(displayModeBar = FALSE)
-  if (length(models) > 0) p <- model_buttons(p, models, n_fixed)
+  if (length(models) > 0) p <- model_buttons(p, models, n_fixed, per_model)
   p
 }
 
@@ -137,6 +139,8 @@ eval_acc   <- read_res("results/eval_accuracy.csv")    # 10_evaluate.R
 eval_tests <- read_res("results/eval_tests.csv")
 eval_bias  <- read_res("results/eval_bias.csv")
 eval_shape <- read_res("results/eval_shape.csv")
+eval_post  <- read_res("results/eval_post.csv")
+backtest   <- read_res("results/backtest_forecasts.csv")
 bmt_sel    <- read_res("results/bmt_selection.csv")    # 06_bmt.R
 bmtx_combo <- read_res("results/bmtx_combos.csv")      # 10_evaluate.R
 bmtx_sel   <- read_res("results/bmtx_selection.csv")   # 08_bmtx.R
@@ -179,8 +183,8 @@ bt_improve <- if (!is.na(best_bt)) paste0("\u2212", round(100 * (1 - eval_acc$rm
 bt_label   <- if (!is.na(best_bt)) text_labels[[best_bt]] else ""
 best_all   <- if (has_eval) eval_acc$model[!grepl("^naive", eval_acc$model)][1] else NA
 live_txt   <- if (has_eval && !is.na(best_bt) && best_all != main) {
-  sprintf("The live forecast uses %s (%s vs same hour yesterday), the best model that runs live so far; %s does not run live yet.",
-          text_labels[[main]], bt_improve, text_labels[[best_all]])
+  sprintf("The forecast shown for %s is from %s (%s vs same hour yesterday), because %s has no saved forecast for that day.",
+          format(latest, "%a %d %b"), text_labels[[main]], bt_improve, text_labels[[best_all]])
 } else ""
 
 # tests: find a row for two models in either order
@@ -216,6 +220,16 @@ sig_txt <- if (has_eval && nrow(filter(eval_acc, !grepl("^naive", model))) >= 2)
   }
 } else ""
 
+# bias correction and band results (10_evaluate.R)
+post_txt <- if (!is.null(eval_post) && main %in% eval_post$model) {
+  r <- eval_post[eval_post$model == main, ]
+  n_sig <- sum(eval_post$dm_p < 0.05 & eval_post$mae_corr < eval_post$mae_raw)
+  sprintf(paste("Bias correction (median error of the last %d days): %s mean error %+.1f to %+.1f, MAE %.1f to %.1f (DM %s);",
+                "significant for %d of %d models, so not used live. 80%% band: covers %s of hours."),
+          k_bias, text_labels[[main]], r$mean_error_raw, r$mean_error_corr, r$mae_raw, r$mae_corr, p_txt(r$dm_p),
+          n_sig, nrow(eval_post), pct(r$coverage))
+} else ""
+
 xgb_txt <- if (!is.null(xgb_tun) && any(xgb_tun$chosen)) {
   ch <- xgb_tun[xgb_tun$chosen, ]
   set_txt <- function(m) { r <- ch[ch$model == m, ]; sprintf("depth %d and %s rounds", r$max_depth, r$rounds) }
@@ -225,9 +239,15 @@ xgb_txt <- if (!is.null(xgb_tun) && any(xgb_tun$chosen)) {
 
 bmt_avg_sel <- if (!is.null(bmt_sel)) format(round(sum(bmt_sel$share) / n_distinct(bmt_sel$target), 1), nsmall = 1) else "\u2013"
 bmt_n_cand  <- if (!is.null(bmt_sel)) n_distinct(bmt_sel$input) else "\u2013"
-eval_period <- if (has_eval) sprintf("%s to %s, %d days, %s hourly forecasts",
-                                     format(eval_acc$from[1], "%d %b %Y"), format(eval_acc$to[1], "%d %b %Y"),
-                                     eval_acc$n_days[1], prettyNum(eval_acc$n_hours[1], big.mark = ",")) else ""
+eval_period <- if (has_eval) {
+  n_live <- if ("n_live_days" %in% names(eval_acc)) eval_acc$n_live_days[1] else 0
+  sprintf("%s to %s, %d days (%s), %s hourly forecasts",
+          format(eval_acc$from[1], "%d %b %Y"), format(eval_acc$to[1], "%d %b %Y"), eval_acc$n_days[1],
+          if (n_live > 0) sprintf("%d backtest days, then %d live %s", eval_acc$n_backtest_days[1], n_live,
+                                  if (n_live == 1) "day" else "days")
+          else "backtest only, live days are added once every model has a saved forecast",
+          prettyNum(eval_acc$n_hours[1], big.mark = ","))
+} else ""
 
 # BMT-X combinations (variables tab)
 has_bmtx  <- !is.null(bmtx_combo)
@@ -257,11 +277,14 @@ bmtx_txt <- if (has_bmtx) {
 bat_val <- function(strategy, col) bat_sum[[col]][bat_sum$strategy == strategy]
 bat_set <- function(name) bat_setup$value[bat_setup$name == name]
 bat_best <- if (has_battery) bat_sum$strategy[!bat_sum$strategy %in% c("perfect", "naive_day", "naive_mix")][1] else NA
-bat_best_label <- if (has_battery) long_labels[[bat_best]] else ""
+bat_best_label <- if (has_battery) text_labels[[bat_best]] else ""
 bat_share <- if (has_battery) pct(bat_val(bat_best, "share_of_perfect")) else "\u2013"
 bat_extra <- if (has_battery) eur_sign(bat_val(bat_best, "eur_per_mw_year") - bat_val("naive_day", "eur_per_mw_year")) else "\u2013"
 bat_p     <- if (has_battery) p_txt(find_test(bat_tests, bat_best, "naive_day")$p_value) else "\u2013"
 bat_days  <- if (has_battery) nrow(bat_daily) else 0
+bat_live  <- if (has_battery && "source" %in% names(bat_daily)) sum(bat_daily$source == "live") else 0
+bat_period <- if (bat_live > 0) sprintf("%d backtest days, then %d live %s", bat_days - bat_live, bat_live,
+                                        if (bat_live == 1) "day" else "days") else sprintf("%d backtest days", bat_days)
 
 # battery text that follows the results
 bat_cmp <- function(a, b) {
@@ -297,6 +320,24 @@ bat_txt <- if (has_battery) {
   parts <- parts[parts != ""]
   paste(paste0(toupper(substring(parts, 1, 1)), substring(parts, 2)), collapse = " ")
 } else ""
+
+# 80% band for tomorrow from each model's errors on the days before (R/postprocess.R)
+past_errors <- function(m) {
+  bt <- if (!is.null(backtest) && m %in% names(backtest)) select(backtest, date, hour, actual, f = all_of(m)) else NULL
+  lv <- if (m %in% names(fc)) fc |> filter(date < latest, !is.na(.data[[m]])) |>
+    select(date, hour, f = all_of(m)) |> inner_join(actual, by = c("date", "hour")) else NULL
+  bind_rows(lv, bt) |>
+    distinct(date, hour, .keep_all = TRUE) |>
+    transmute(date, hour, e = actual - f)
+}
+bands <- lapply(setNames(models, models), \(m) {
+  b <- adjust_day(past_errors(m), latest)
+  if (is.null(b)) return(NULL)
+  tomorrow |> select(hour, f = all_of(m)) |> inner_join(b, by = "hour") |>
+    mutate(lower = f + lo, upper = f + hi)
+})
+band_cov <- function(m) if (!is.null(eval_post) && m %in% eval_post$model) eval_post$coverage[eval_post$model == m] else NA
+rgba <- function(hex, a) { v <- grDevices::col2rgb(hex); sprintf("rgba(%d,%d,%d,%.2f)", v[1], v[2], v[3], a) }
 
 # forecast tiles, from the main model
 diff_today <- mean(tomorrow[[main]]) - mean(today_act$actual)
@@ -376,9 +417,9 @@ bat_desc <- if (has_battery) sprintf("%g MWh / %g MW battery, %g%% round trip ef
 ::: {.card}
 <div class="kpi" style="--accent: #c2410c">
 <div>
-<div class="kpi-label">Backtest accuracy</div>
+<div class="kpi-label">Accuracy vs naive</div>
 <div class="kpi-value">`r bt_improve`</div>
-<div class="kpi-sub">`r bt_label` (live model) vs same hour yesterday, MAE</div>
+<div class="kpi-sub">`r bt_label` (live model) vs same hour yesterday, MAE since `r if (has_eval) format(eval_acc$from[1], "%b %Y") else ""`</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-bullseye"></i></div>
 </div>
@@ -403,7 +444,16 @@ fc_models <- setdiff(models, "naive_day")
 fc_models <- c(main, setdiff(fc_models, main))   # chart opens on the same model as the tiles
 
 for (m in fc_models) {
+  b <- bands[[m]]
+  if (is.null(b)) b <- tibble(hour = 0:23, lower = NA_real_, upper = NA_real_)
+  cov_txt <- if (is.na(band_cov(m))) "" else sprintf(", covered %s of hours so far", pct(band_cov(m)))
   p <- p |>
+    add_lines(data = b, x = ~hour, y = ~lower, line = list(width = 0), showlegend = FALSE,
+              visible = (m == fc_models[1]), hoverinfo = "skip") |>
+    add_lines(data = b, x = ~hour, y = ~upper, line = list(width = 0), fill = "tonexty",
+              fillcolor = rgba(model_colors[[m]], 0.15),
+              name = paste0("80% band from the last ", k_int, " days' errors", cov_txt),
+              visible = (m == fc_models[1]), hoverinfo = "skip") |>
     add_lines(data = tomorrow, x = ~hour, y = tomorrow[[m]],
               name = paste0(model_labels[[m]], " forecast ", format(latest, "%a %d %b"),
                             ", made ", format(made_dk, "%a %d %b %H:%M")),
@@ -412,7 +462,7 @@ for (m in fc_models) {
               hovertemplate = paste0("%{y:.1f} €/MWh<extra>", model_labels[[m]], "</extra>"))
 }
 
-p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2) |> layout(xaxis = list(dtick = 3))
+p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_model = 3) |> layout(xaxis = list(dtick = 3))
 ```
 
 # Track record
@@ -572,7 +622,7 @@ if (has_bmtx) {
 :::
 
 ```{r}
-#| title: "All 16 combinations, backtest"
+#| title: "All 16 combinations (backtest study, wind and solar not available before the auction)"
 if (has_bmtx) {
   bmtx_combo |>
     transmute(Variables          = sapply(combo, combo_txt),
@@ -591,9 +641,9 @@ if (has_bmtx) {
 ::: {.card}
 <div class="kpi" style="--accent: #f97316">
 <div>
-<div class="kpi-label">`r bat_best_label` share of max profit (backtest)</div>
+<div class="kpi-label">`r bat_best_label` share of max profit</div>
 <div class="kpi-value">`r bat_share`</div>
-<div class="kpi-sub">perfect foresight = 100%</div>
+<div class="kpi-sub">perfect foresight = 100%, `r bat_period`</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-battery-charging"></i></div>
 </div>
@@ -602,7 +652,7 @@ if (has_bmtx) {
 ::: {.card}
 <div class="kpi" style="--accent: #16a34a">
 <div>
-<div class="kpi-label">Extra profit vs naive (backtest)</div>
+<div class="kpi-label">Extra profit vs naive</div>
 <div class="kpi-value">`r bat_extra`<span class="kpi-unit">€</span></div>
 <div class="kpi-sub">per MW per year</div>
 </div>
@@ -615,7 +665,7 @@ if (has_bmtx) {
 <div>
 <div class="kpi-label">Significance</div>
 <div class="kpi-value">`r bat_p`</div>
-<div class="kpi-sub">`r bat_best_label` vs naive, daily profit (backtest)</div>
+<div class="kpi-sub">`r bat_best_label` vs naive, daily profit</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-check2-circle"></i></div>
 </div>
@@ -632,10 +682,10 @@ if (has_bmtx) {
 </div>
 :::
 
-## Row {height=48%}
+## Row {height=44%}
 
 ```{r}
-#| title: "Backtest: cumulative battery profit when planning with each forecast (EUR)"
+#| title: "Cumulative battery profit when planning with each forecast (EUR)"
 if (!has_battery) {
   cat("Run scripts/11_battery.R to add the battery backtest.")
 } else {
@@ -647,14 +697,14 @@ if (!has_battery) {
                             dash = if (s == "perfect") "dot" else "solid"),
                 hovertemplate = paste0("%{y:,.0f} €<extra>", long_labels[[s]], "</extra>"))
   }
-  p3 |> chart_layout()
+  p3 |> chart_layout() |> layout(legend = list(orientation = "v", x = 1.02, y = 1), margin = list(t = 20))
 }
 ```
 
-## Row {height=38%}
+## Row {height=42%}
 
 ```{r}
-#| title: "Backtest profit by strategy"
+#| title: "Profit by strategy"
 if (has_battery) {
   bat_sum |>
     transmute(Strategy              = unname(long_labels[strategy]),
@@ -668,9 +718,9 @@ if (has_battery) {
 ::: {.card title="How it works"}
 
 Each day a `r bat_desc` plans its charging and selling for tomorrow using the forecast,
-and is then paid the actual prices. The chart and table are the backtest over `r bat_days` days; the
-live tile uses the forecasts saved before each auction (`r live_bat_days` days so far). Perfect
-foresight plans with the actual prices and is the upper bound.
+and is then paid the actual prices. The chart and table cover `r bat_period` (live days are added
+once every model has a saved forecast); the live tile uses the forecasts saved before each auction
+(`r live_bat_days` days so far). Perfect foresight plans with the actual prices and is the upper bound.
 
 `r bat_txt`
 
@@ -683,7 +733,7 @@ No fees, no battery wear, hourly instead of 15-minute trading.
 ## Row {height=40%}
 
 ```{r}
-#| title: "Backtest accuracy"
+#| title: "Accuracy"
 if (has_eval) {
   acc <- eval_acc
   if (!is.null(mcs_models)) acc <- left_join(acc, mcs_models, by = "model")
@@ -697,8 +747,9 @@ if (has_eval) {
 }
 ```
 
+::: {.card title="Bias and shape of the day"}
+
 ```{r}
-#| title: "Bias and shape of the day"
 if (has_eval) {
   eval_bias |>
     inner_join(eval_shape, by = "model") |>
@@ -712,6 +763,10 @@ if (has_eval) {
     knitr::kable(align = "lrrrrrr")
 }
 ```
+
+`r post_txt`
+
+:::
 
 ## Row {height=60%}
 
@@ -761,11 +816,11 @@ D-7 and the level and range of D-1 (XGBoost-X adds neighbour prices and holidays
 worse (Holm). The model confidence set (Hansen, Lunde & Nason, 10%, 7-day block bootstrap) keeps the
 models that can't be told apart from the best one.
 
-**Bias:** mean error above 0 = forecast too low on average. Mincer-Zarnowitz slope above 1 = the
-forecast moves too little; MZ p tests intercept 0 and slope 1 (Newey-West).
+**Bias:** mean error above 0 = too low on average; Mincer-Zarnowitz slope above 1 = moves too little
+(MZ p tests intercept 0 and slope 1, Newey-West).
 
-**Live track record:** the forecast for each delivery day is saved before the noon auction on the
-day before, with the time it was made, and never changed afterwards. After noon nothing is saved.
+**Live:** each forecast is saved before the noon auction the day before, with the time it was made,
+and never changed. After noon nothing is saved.
 
 **Data:** [Energi Data Service](https://www.energidataservice.dk) (Energinet).<br>
 **Code:** [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting)<br>

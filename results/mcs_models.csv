@@ -1,0 +1,9 @@
+model,mcs_p,in_mcs
+naive_day,0,FALSE
+naive_mix,0,FALSE
+xgbx,0,FALSE
+xgb,0,FALSE
+lear,0,FALSE
+learx,0.039,FALSE
+bmtx,0.823,TRUE
+bmt,1,TRUE

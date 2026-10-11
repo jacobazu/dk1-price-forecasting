@@ -1,4 +1,4 @@
-# economic evaluation with a battery
+# economic evaluation with a battery, runs every morning on github after 10_evaluate.R
 # battery plans each day with the forecast and gets paid the actual prices
 # perfect = plan with actual prices, best possible
 
@@ -8,7 +8,9 @@ library(lubridate)
 library(readr)
 library(ggplot2)
 
+source("R/lear.R")
 source("R/battery.R")
+source("R/forecasts.R")
 
 # battery, see R/battery.R
 cap_mwh   <- battery_setup$cap_mwh
@@ -16,34 +18,14 @@ power_mw  <- battery_setup$power_mw
 eff_rt    <- battery_setup$eff_rt
 max_cycle <- battery_setup$max_cycle
 
-# backtest forecasts from 04_lear.R, 06_bmt.R, 08_bmtx.R and 09_xgb.R, same days for all
-# bmtx and learx with neighbour prices and holidays (known before the auction)
-wide <- function(f, combo = NULL) {
-  x <- readRDS(f)
-  if (!is.null(combo)) x <- x[x$combo == combo, ]
-  x |> select(date, hour, model, forecast) |> pivot_wider(names_from = model, values_from = forecast)
-}
-fc <- readRDS("data/processed/forecasts_lear.rds") |>
-  inner_join(select(readRDS("data/processed/forecasts_bmt.rds"), date, hour, bmt),
-             by = c("date", "hour")) |>
-  inner_join(wide("data/processed/forecasts_bmtx.rds", "nb+hol"), by = c("date", "hour")) |>
-  inner_join(wide("data/processed/forecasts_xgb.rds"), by = c("date", "hour"))
-
-# naive, same hour yesterday
-fc <- fc |>
-  left_join(fc |> transmute(date = date + 1, hour, naive_day = actual),
-            by = c("date", "hour")) |>
-  drop_na() |>
-  group_by(date) |>
-  filter(n() == 24) |>
-  ungroup() |>
-  arrange(date, hour)
+# same forecasts as 10_evaluate.R: the backtest plus the live days saved before the auction
+models <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
+fc <- all_forecasts(models)
 
 
 lp_def <- battery_lp()
 
 # plan with each forecast, paid with actual prices
-models     <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
 strategies <- c(perfect = "actual", setNames(models, models))
 days <- unique(fc$date)
 
@@ -108,7 +90,9 @@ print(p)
 
 # results for the dashboard, small files so they go on github
 dir.create("results", showWarnings = FALSE)
-write_csv(mutate(profit, across(-date, \(x) round(x, 2))), "results/battery_daily.csv")
+write_csv(mutate(profit, across(-date, \(x) round(x, 2))) |>
+            left_join(distinct(fc, date, source), by = "date"),
+          "results/battery_daily.csv")
 write_csv(summary_tbl, "results/battery_summary.csv")
 write_csv(tests, "results/battery_tests.csv")
 write_csv(tibble(name  = c("cap_mwh", "power_mw", "eff_rt", "max_cycle"),

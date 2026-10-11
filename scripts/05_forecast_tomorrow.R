@@ -61,6 +61,7 @@ xgb_day <- function(m, ex) {
 xgb  <- safe("XGBoost",   \() xgb_day("xgb", NULL))
 xgbx <- safe("XGBoost-X", \() xgb_day("xgbx", exog[c("nb", "hol")]))
 naive_day <- features$P[d - 1, ]   # same hour yesterday
+naive_mix <- if (features$dow[d] %in% c(1, 6, 7)) features$P[d - 7, ] else naive_day   # week ago on mon, sat, sun
 
 new_forecast <- tibble(
   forecast_made_utc = format(Sys.time(), "%Y-%m-%d %H:%M", tz = "UTC"),
@@ -72,7 +73,8 @@ new_forecast <- tibble(
   learx             = round(learx, 2),
   xgb               = round(xgb, 2),
   xgbx              = round(xgbx, 2),
-  naive_day         = round(naive_day, 2)
+  naive_day         = round(naive_day, 2),
+  naive_mix         = round(naive_mix, 2)
 )
 
 # append to live file but never overwrite forecast

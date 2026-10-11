@@ -12,6 +12,8 @@ library(readr)
 library(lubridate)
 source("R/lear.R")
 source("R/mcs.R")
+source("R/forecasts.R")
+source("R/postprocess.R")
 
 models <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
 dir.create("results", showWarnings = FALSE)
@@ -43,26 +45,9 @@ if (all(file.exists(bt_files))) {
     arrange(date, hour)
   write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
 }
-backtest <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |>
-  mutate(source = "backtest")
-
-# live days after the backtest, only days where every model was saved before the auction
-live <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE,
-                 col_types = cols(forecast_made_utc = col_character(), date = col_date(),
-                                  hour = col_integer(), .default = col_double()))
-for (m in setdiff(models, names(live))) live[[m]] <- NA_real_
-live <- live |>
-  filter(date > max(backtest$date)) |>
-  inner_join(actual, by = c("date", "hour")) |>
-  select(date, hour, actual, all_of(models)) |>
-  drop_na() |>
-  group_by(date) |>
-  filter(n() == 24) |>
-  ungroup() |>
-  mutate(source = "live")
-
-fc <- bind_rows(backtest, live) |>
-  arrange(date, hour)
+fc <- all_forecasts(models)
+backtest <- filter(fc, source == "backtest")
+live     <- filter(fc, source == "live")
 
 cat("evaluation period:", format(min(fc$date)), "to", format(max(fc$date)), "-",
     n_distinct(backtest$date), "backtest days and", n_distinct(live$date), "live days\n")
@@ -195,6 +180,30 @@ L_models <- sapply(models, \(m) daily_loss(m, "abs"))
 mcs_models <- mcs(L_models) |>
   mutate(in_mcs = mcs_p >= 0.10)
 print(mcs_models)
+
+# bias correction and 80% intervals from past errors (R/postprocess.R), for every real model
+# from the day there are enough past errors. dm test: corrected vs raw on the same days
+post <- bind_rows(lapply(setdiff(models, c("naive_day", "naive_mix")), \(m) {
+  x  <- postprocess(fc, m)
+  dl <- x |>
+    group_by(date) |>
+    summarise(d = mean(abs(actual - corrected)) - mean(abs(actual - forecast)), .groups = "drop")
+  dm <- dm_test(dl$d)
+  tibble(model        = m,
+         days         = n_distinct(x$date),
+         mae_raw      = mean(abs(x$actual - x$forecast)),
+         mae_corr     = mean(abs(x$actual - x$corrected)),
+         dm_p         = dm[["p"]],
+         mean_error_raw  = mean(x$actual - x$forecast),
+         mean_error_corr = mean(x$actual - x$corrected),
+         coverage     = mean(x$actual >= x$lower & x$actual <= x$upper),
+         below        = mean(x$actual < x$lower),
+         above        = mean(x$actual > x$upper),
+         width        = mean(x$upper - x$lower),
+         nominal      = diff(q_probs))
+}))
+print(post)
+write_csv(post, "results/eval_post.csv")
 
 write_csv(accuracy, "results/eval_accuracy.csv")
 write_csv(tests,    "results/eval_tests.csv")
