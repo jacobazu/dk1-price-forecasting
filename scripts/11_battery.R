@@ -16,16 +16,24 @@ eff_rt    <- 0.90    # round trip
 max_cycle <- 1       # cycles per day
 eff       <- sqrt(eff_rt)
 
-# backtest forecasts from 04_lear.R and 06_bmt.R, same days for all
+# backtest forecasts from 04_lear.R, 06_bmt.R, 08_bmtx.R and 09_xgb.R, same days for all
+# bmtx and learx with all four groups
+wide <- function(f, combo = NULL) {
+  x <- readRDS(f)
+  if (!is.null(combo)) x <- x[x$combo == combo, ]
+  x |> select(date, hour, model, forecast) |> pivot_wider(names_from = model, values_from = forecast)
+}
 fc <- readRDS("data/processed/forecasts_lear.rds") |>
   inner_join(select(readRDS("data/processed/forecasts_bmt.rds"), date, hour, bmt),
-             by = c("date", "hour"))
+             by = c("date", "hour")) |>
+  inner_join(wide("data/processed/forecasts_bmtx.rds", "nb+wind+solar+hol"), by = c("date", "hour")) |>
+  inner_join(wide("data/processed/forecasts_xgb.rds"), by = c("date", "hour"))
 
 # naive, same hour yesterday
 fc <- fc |>
   left_join(fc |> transmute(date = date + 1, hour, naive_day = actual),
             by = c("date", "hour")) |>
-  filter(!is.na(naive_day)) |>
+  drop_na() |>
   group_by(date) |>
   filter(n() == 24) |>
   ungroup() |>
@@ -81,8 +89,8 @@ schedule <- function(price) {
 
 
 # plan with each forecast, paid with actual prices
-strategies <- c(perfect = "actual", bmt = "bmt", lear = "lear",
-                naive_day = "naive_day", naive_mix = "naive_mix")
+models     <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
+strategies <- c(perfect = "actual", setNames(models, models))
 days <- unique(fc$date)
 
 profit <- lapply(days, \(dd) {
@@ -121,8 +129,7 @@ nw_test <- function(d, lag = 7) {
   c(mean_eur_per_day = mean(d), t = t, p_value = 2 * pnorm(-abs(t)))
 }
 
-comparisons <- list(c("bmt", "lear"), c("bmt", "naive_day"), c("bmt", "naive_mix"),
-                    c("lear", "naive_day"), c("lear", "naive_mix"), c("naive_mix", "naive_day"))
+comparisons <- combn(models, 2, simplify = FALSE)
 tests <- bind_rows(lapply(comparisons, \(ab) {
   r <- nw_test(profit[[ab[1]]] - profit[[ab[2]]])
   tibble(model_a = ab[1], model_b = ab[2], mean_eur_per_day = r[["mean_eur_per_day"]],

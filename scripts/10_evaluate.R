@@ -1,8 +1,9 @@
 # evaluation of the backtest forecasts, all models on the same hours
 # accuracy (mae, rmse, rmae), diebold-mariano and giacomini-white tests,
 # bias (mincer-zarnowitz), shape of the day (cheapest / most expensive hour),
-# and a model confidence set over the 16 BMT-X combinations
-# needs forecasts_lear.rds (04_lear.R), forecasts_bmt.rds (06_bmt.R) and forecasts_bmtx.rds (08_bmtx.R)
+# and model confidence sets over the 16 BMT-X combinations and over the main models
+# needs forecasts_lear.rds (04_lear.R), forecasts_bmt.rds (06_bmt.R), forecasts_bmtx.rds (08_bmtx.R)
+# and forecasts_xgb.rds (09_xgb.R)
 # writes small csv files to results/ that the dashboard reads
 
 library(dplyr)
@@ -34,13 +35,17 @@ fc <- fc |>
                select(date, hour, model, forecast) |>
                pivot_wider(names_from = model, values_from = forecast),
              by = c("date", "hour")) |>
+  inner_join(readRDS("data/processed/forecasts_xgb.rds") |>
+               select(date, hour, model, forecast) |>
+               pivot_wider(names_from = model, values_from = forecast),
+             by = c("date", "hour")) |>
   drop_na() |>
   group_by(date) |>
   filter(n() == 24) |>
   ungroup() |>
   arrange(date, hour)
 
-models <- c("bmtx", "learx", "bmt", "lear", "naive_day", "naive_mix")
+models <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
 cat("evaluation period:", format(min(fc$date)), "to", format(max(fc$date)),
     "-", n_distinct(fc$date), "days,", nrow(fc), "hours\n")
 
@@ -225,6 +230,12 @@ combo_tab <- combo_fc |>
 print(combo_tab, n = Inf)
 print(mcs_res, n = Inf)
 
+# second set over the main models (same hours as the accuracy table)
+L_models <- sapply(models, \(m) daily_loss(m, "abs"))
+mcs_models <- mcs(L_models) |>
+  mutate(in_mcs = mcs_p >= 0.10)
+print(mcs_models)
+
 dir.create("results", showWarnings = FALSE)
 write_csv(accuracy, "results/eval_accuracy.csv")
 write_csv(tests,    "results/eval_tests.csv")
@@ -232,3 +243,4 @@ write_csv(bias,     "results/eval_bias.csv")
 write_csv(shape,    "results/eval_shape.csv")
 write_csv(combo_tab, "results/bmtx_combos.csv")
 write_csv(mcs_res,  "results/mcs.csv")
+write_csv(mcs_models, "results/mcs_models.csv")

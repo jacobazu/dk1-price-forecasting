@@ -5,6 +5,8 @@
 library(readr)
 source("R/lear.R")
 source("R/bmt.R")
+has_xgb <- requireNamespace("xgboost", quietly = TRUE)
+if (has_xgb) source("R/xgb.R")
 
 prices <- readRDS("data/processed/prices_dk1_hourly.rds")
 
@@ -27,6 +29,17 @@ lear      <- lear_forecast_day(features, d)
 bmt       <- tryCatch(bmt_forecast_day(features, d), error = \(e) {
   message("BMT failed: ", conditionMessage(e)); rep(NA_real_, 24)
 })                                 # lear is still saved if bmt fails
+
+# xgboost with the depth and rounds chosen in 09_xgb.R
+xgb <- tryCatch({
+  if (!has_xgb) stop("xgboost not installed")
+  tun <- read_csv("results/xgb_tuning.csv", show_col_types = FALSE) |>
+    filter(model == "xgb", chosen)
+  xgb_forecast_day(features, d, params = modifyList(xgb_params, list(max_depth = tun$max_depth)),
+                   rounds = tun$rounds)
+}, error = \(e) {
+  message("XGBoost failed: ", conditionMessage(e)); rep(NA_real_, 24)
+})
 naive_day <- features$P[d - 1, ]   # same hour yesterday
 
 new_forecast <- tibble(
@@ -35,6 +48,7 @@ new_forecast <- tibble(
   hour              = 0:23,
   lear              = round(lear, 2),
   bmt               = round(bmt, 2),
+  xgb               = round(xgb, 2),
   naive_day         = round(naive_day, 2)
 )
 
