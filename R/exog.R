@@ -65,8 +65,10 @@ make_weather <- function(dates, weather) {
               ms    = rowMeans(across(starts_with("wind_"))) / 3.6,   # km/h to m/s
               wpow  = pmin(pmax((ms - 3) / (12 - 3), 0), 1)^3,
               solar = rowMeans(across(starts_with("solar_"))))
+  # radiation is the mean of the hour before its timestamp
+  s1    <- transmute(w, time = time - hours(1), solar)
   wpow  <- to_daily(w, "wpow", dates);  colnames(wpow)  <- paste0("wxwind_d0_h", 0:23)
-  solar <- to_daily(w, "solar", dates); colnames(solar) <- paste0("wxsolar_d0_h", 0:23)
+  solar <- to_daily(s1, "solar", dates); colnames(solar) <- paste0("wxsolar_d0_h", 0:23)
   cbind(wpow, solar)
 }
 
@@ -77,7 +79,7 @@ make_exog <- function(dates, neighbours, wind_solar, holidays) {
     colnames(m) <- paste0(tolower(a), "_d1_h", 0:23)
     m
   }))
-
+  
   wind <- solar <- NULL
   if (!is.null(wind_solar)) {
     ws <- fill_gaps(wind_solar, c("fc_offshore_wind", "fc_onshore_wind", "fc_solar"))
@@ -86,10 +88,10 @@ make_exog <- function(dates, neighbours, wind_solar, holidays) {
     solar <- to_daily(ws, "fc_solar", dates)
     colnames(solar) <- paste0("solar_d0_h", 0:23)
   }
-
+  
   hol <- cbind(hol_d0 = as.numeric(dates %in% holidays$date),
                hol_d1 = as.numeric((dates - 1) %in% holidays$date))
-
+  
   list(nb = nb, wind = wind, solar = solar, hol = hol)
 }
 
