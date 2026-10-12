@@ -165,6 +165,10 @@ if (!is.null(chall)) for (v in c("backtest_mae_champion", "backtest_mae_challeng
 }
 has_eval    <- !is.null(eval_acc)
 has_battery <- !is.null(bat_sum)
+risk_tests <- read_res("results/battery_risk_tests.csv")   # 12_battery_risk.R
+risk_daily <- read_res("results/battery_risk_daily.csv")
+risk_next  <- read_res("results/battery_risk_next.csv")
+has_risk   <- !is.null(risk_tests) && !is.null(risk_daily) && any(risk_tests$used)
 
 long_labels <- c(perfect = "Perfect foresight",
                  ensemble = "Ensemble",
@@ -346,6 +350,35 @@ bat_txt <- if (has_battery) {
   if (length(real) >= 2) parts <- c(parts, bat_cmp(real[1], real[2]), bat_rank(real[1], real[2]))
   parts <- parts[parts != ""]
   paste(paste0(toupper(substring(parts, 1, 1)), substring(parts, 2)), collapse = " ")
+} else ""
+
+# revenue at risk
+eur      <- function(x) paste0(if (x < 0) "\u2212" else "", prettyNum(abs(round(x)), big.mark = ","))
+low1     <- function(x) paste0(tolower(substring(x, 1, 1)), substring(x, 2))
+risk_u   <- if (has_risk) risk_tests[risk_tests$used, ][1, ] else NULL
+risk_nx  <- if (has_risk && !is.null(risk_next)) risk_next[risk_next$method == risk_u$method, ] else NULL
+if (!is.null(risk_nx) && nrow(risk_nx) != 1) risk_nx <- NULL
+risk_day <- if (is.null(risk_nx)) "" else format(as_date(risk_nx$date), "%a %d %b")
+risk_exp <- if (is.null(risk_nx)) "\u2013" else eur(risk_nx$expected)
+risk_var <- if (is.null(risk_nx)) "\u2013" else eur(risk_nx$var)
+risk_es  <- if (is.null(risk_nx)) "\u2013" else eur(risk_nx$es)
+risk_fl  <- if (is.null(risk_nx)) "" else sprintf("1 day in 20 earns less than %s \u20ac", eur(risk_nx$floor))
+risk_hit <- if (has_risk) pct(risk_u$miss_rate) else "\u2013"
+risk_hit_sub <- if (has_risk) sprintf("target 5%%, %d of %d days, Kupiec %s", risk_u$misses, risk_u$days,
+                                      p_txt(risk_u$kupiec_p)) else ""
+risk_txt <- if (has_risk) {
+  u <- risk_u
+  if (u$calibrated) {
+    sprintf(paste("Used: %s. The revenue fell below its floor on %s of %d days, %s (Kupiec %s). The misses",
+                  "don't cluster (Christoffersen %s), and the bad days aren't significantly worse than its ES says",
+                  "(Acerbi\u2013Sz\u00e9kely %s)."),
+            low1(u$label), pct(u$miss_rate), u$days,
+            if (u$miss_rate > 0.05) "a bit more than the 5% target, but not significantly" else "close to the 5% target",
+            p_txt(u$kupiec_p), p_txt(u$christoffersen_p), p_txt(u$z2_p))
+  } else {
+    sprintf("No method passes all three tests, so %s is shown, with the lowest FZ0 score. Read its numbers with care.",
+            low1(u$label))
+  }
 } else ""
 
 # ranges for tomorrow
@@ -862,6 +895,121 @@ once every model has a saved forecast); the live tile uses the forecasts saved b
 `r bat_txt`
 
 No fees, no battery wear, hourly instead of 15-minute trading.
+
+:::
+
+# Revenue at risk {scrolling="true"}
+
+## Row {height=130px}
+
+::: {.card}
+<div class="kpi" style="--accent: #f97316">
+<div>
+<div class="kpi-label">Expected battery revenue `r risk_day`</div>
+<div class="kpi-value">`r risk_exp`<span class="kpi-unit">€</span></div>
+<div class="kpi-sub">planned with the ensemble before the auction</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-battery-charging"></i></div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #2563eb">
+<div>
+<div class="kpi-label">Revenue at risk (95% VaR)</div>
+<div class="kpi-value">`r risk_var`<span class="kpi-unit">€</span></div>
+<div class="kpi-sub">`r risk_fl`</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-shield-exclamation"></i></div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #6b7280">
+<div>
+<div class="kpi-label">Expected shortfall (95%)</div>
+<div class="kpi-value">`r risk_es`<span class="kpi-unit">€</span></div>
+<div class="kpi-sub">average shortfall on those days</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-graph-down-arrow"></i></div>
+</div>
+:::
+
+::: {.card}
+<div class="kpi" style="--accent: #6b7280">
+<div>
+<div class="kpi-label">Days below the floor</div>
+<div class="kpi-value">`r risk_hit`</div>
+<div class="kpi-sub">`r risk_hit_sub`</div>
+</div>
+<div class="kpi-icon"><i class="bi bi-calendar-x"></i></div>
+</div>
+:::
+
+## Row {height=440px}
+
+```{r}
+#| title: "Battery revenue each day and its 95% floor (€)"
+if (!has_risk) {
+  cat("Run scripts/12_battery_risk.R to add the revenue at risk.")
+} else {
+  rd <- risk_daily |> filter(method == risk_u$method) |> arrange(date)
+  plot_ly(rd, x = ~date) |>
+    add_lines(y = ~realized, name = "Revenue", line = list(color = orange, width = 1.5),
+              hovertemplate = "%{y:,.0f} €<extra>Revenue</extra>") |>
+    add_lines(y = ~floor, name = "95% floor (expected minus VaR)", line = list(color = "#2563eb", width = 1.5),
+              hovertemplate = "%{y:,.0f} €<extra>95% floor</extra>") |>
+    add_markers(data = filter(rd, miss), y = ~realized, name = "Below the floor",
+                marker = list(color = ink, size = 8, line = list(color = "#ffffff", width = 2)),
+                hovertemplate = "%{y:,.0f} €<extra>Below the floor</extra>") |>
+    chart_layout() |>
+    layout(margin = list(t = 20))
+}
+```
+
+## Row {height=250px}
+
+```{r}
+#| title: "Backtest: four ways to build the scenarios"
+if (has_risk) {
+  risk_tests |>
+    transmute(Method                        = paste0(label, ifelse(used, " (used)", "")),
+              `Days below the floor`        = sprintf("%s (%d of %d)", pct(miss_rate), misses, days),
+              `Kupiec p`                    = p_tab(kupiec_p),
+              `Christoffersen p`            = ifelse(is.na(christoffersen_p), "\u2013", p_tab(christoffersen_p)),
+              `Acerbi–Székely p`            = p_tab(z2_p),
+              `FZ0 score`                   = format(round(fz0, 2), nsmall = 2),
+              `DM p vs best`                = ifelse(is.na(dm_p), "best", p_tab(dm_p)),
+              `VaR / ES (€)`                = paste(sapply(var, eur), "/", sapply(es, eur)),
+              `Live misses`                 = ifelse(live_days > 0, sprintf("%d of %d", live_misses, live_days), "\u2013")) |>
+    knitr::kable(align = "lrrrrrrrr")
+}
+```
+
+## Row {height=360px}
+
+::: {.card title="How it works"}
+
+The battery's plan for tomorrow is made on the ensemble forecast before the auction. With the plan fixed,
+its revenue is the plan times the prices, so the risk comes from the forecast errors in the hours it
+trades. The scenarios are the 24-hour errors of past days, kept whole so the hours stay correlated, run
+through tomorrow's plan. VaR is how far below the expected revenue the worst day in 20 falls; ES is the
+average shortfall on those days. VaR and ES in the table are averages over the days.
+
+Four ways to build the scenarios: the errors of the last 60 days as they were, the same scaled by last
+week's price volatility, a normal distribution with their mean and spread, and filtered historical
+simulation, where each past day's errors are scaled by an EWMA of the forecast errors before it
+(λ = 0.94) and up to 250 days are used.
+
+Tests: Kupiec (is the share of days below the floor 5%), Christoffersen (do those days come in
+clusters) and Acerbi–Székely (are those days worse than the ES says), with simulated p-values since
+there are few misses. The method used passes all three at 5% and then has the lowest FZ0 score, which
+rates VaR and ES together (Patton, Ziegel & Chen 2019). The EWMA method was added on 12 October 2026,
+after the first three failed, so the live days are its real test.
+
+`r risk_txt`
+
+No fees, no battery wear, hourly instead of 15-minute trading, as in the battery backtest.
 
 :::
 

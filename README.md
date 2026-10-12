@@ -60,6 +60,16 @@ ENTSO-E's day-ahead load forecasts for DK1 and Germany are downloaded every day 
 weather was added they lowered the MAE a little, but not significantly. With it they add nothing, so
 they aren't used.
 
+## Revenue at risk
+
+The battery backtest has a risk side too: how far below its expected revenue the battery can end up on
+a bad day (95% VaR and expected shortfall). The plan is fixed before the auction, so the revenue is the
+plan times the prices, and the scenarios are past days' forecast errors (whole days, so the hours stay
+correlated) run through tomorrow's plan. Of four ways to build the scenarios, only filtered historical
+simulation (errors scaled by an EWMA of recent errors, up to 250 days) passes the Kupiec, Christoffersen
+and Acerbi–Székely tests, and only just: the revenue falls below its VaR on 7.3% of days instead of 5%.
+It was added after the other three failed, so the live days are its real test.
+
 ## License
 
 The code in this repository is released under the [MIT License](LICENSE).

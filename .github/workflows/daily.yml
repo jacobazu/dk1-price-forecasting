@@ -87,6 +87,7 @@ jobs:
         run: |
           Rscript scripts/10_evaluate.R
           Rscript scripts/11_battery.R
+          Rscript scripts/12_battery_risk.R
 
       - name: Save forecast and results to the repository
         if: github.event_name != 'push'
