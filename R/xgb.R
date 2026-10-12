@@ -64,6 +64,15 @@ xgb_design <- function(features, rows, exog = NULL) {
       m
     }))
   }
+  # open-meteo for germany
+  wxde <- NULL
+  if (!is.null(exog$wxde)) {
+    wxde <- do.call(cbind, lapply(c("wxdewind_d0", "wxdesolar_d0"), \(v) {
+      m <- series(exog$wxde, v)
+      colnames(m) <- paste0(sub("_d0", "", v), c("", "_mean"))
+      m
+    }))
+  }
   # entso-e load forecasts
   ld <- NULL
   if (!is.null(exog$load)) {
@@ -73,7 +82,7 @@ xgb_design <- function(features, rows, exog = NULL) {
       m
     }))
   }
-  cbind(X, nb, ws, wx, ld,
+  cbind(X, nb, ws, wx, wxde, ld,
         hol_d0 = rep24(exog$hol[rows, "hol_d0"]),
         hol_d1 = rep24(exog$hol[rows, "hol_d1"]))
 }

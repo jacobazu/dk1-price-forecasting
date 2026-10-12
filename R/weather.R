@@ -15,6 +15,18 @@ sites <- tribble(
   "mid_jutland",   56.20, 9.50,  "solar",
   "funen",         55.30, 10.30, "solar"
 )
+# germany: offshore north sea and baltic, the windy north, solar in the south and east
+sites_de <- tribble(
+  ~site,               ~lat,  ~lon,  ~type,
+  "de_north_sea",      54.20, 6.50,  "wind",
+  "de_baltic",         54.80, 14.00, "wind",
+  "de_schleswig",      54.40, 9.20,  "wind",
+  "de_lower_saxony",   52.90, 8.00,  "wind",
+  "de_brandenburg",    53.00, 13.00, "wind",
+  "de_bavaria",        48.60, 11.50, "solar",
+  "de_baden",          48.70, 9.20,  "solar",
+  "de_saxony",         51.10, 13.00, "solar"
+)
 api_var <- c(wind = "wind_speed_100m_previous_day2", solar = "shortwave_radiation_previous_day2")
 
 get_site <- function(site, lat, lon, type, from, to) {
@@ -31,10 +43,10 @@ get_site <- function(site, lat, lon, type, from, to) {
 }
 
 # all sites, hourly utc
-get_weather <- function(from, to) {
+get_weather <- function(from, to, s = sites) {
   periods <- tibble(from = seq(as_date(from), as_date(to), by = "quarter")) |>
     mutate(to = pmin(lead(from, default = as_date(to) + 1) - 1, as_date(to)))
-  jobs <- crossing(sites, periods)
+  jobs <- crossing(s, periods)
   lapply(seq_len(nrow(jobs)), \(i) {
     j <- jobs[i, ]
     message(j$site, " ", j$from)

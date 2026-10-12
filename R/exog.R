@@ -58,8 +58,8 @@ dk_holidays <- function(years) {
 }
 
 # open-meteo, made 48h ahead
-# wind via simple power curve
-make_weather <- function(dates, weather) {
+# wind via simple power curve. prefix "wx" for dk1, "wxde" for germany
+make_weather <- function(dates, weather, prefix = "wx") {
   w <- weather |>
     transmute(time,
               ms    = rowMeans(across(starts_with("wind_"))) / 3.6,   # km/h to m/s
@@ -67,8 +67,8 @@ make_weather <- function(dates, weather) {
               solar = rowMeans(across(starts_with("solar_"))))
   # radiation is the mean of the hour before its timestamp
   s1    <- transmute(w, time = time - hours(1), solar)
-  wpow  <- to_daily(w, "wpow", dates);  colnames(wpow)  <- paste0("wxwind_d0_h", 0:23)
-  solar <- to_daily(s1, "solar", dates); colnames(solar) <- paste0("wxsolar_d0_h", 0:23)
+  wpow  <- to_daily(w, "wpow", dates);  colnames(wpow)  <- paste0(prefix, "wind_d0_h", 0:23)
+  solar <- to_daily(s1, "solar", dates); colnames(solar) <- paste0(prefix, "solar_d0_h", 0:23)
   cbind(wpow, solar)
 }
 
@@ -122,6 +122,7 @@ transform_exog <- function(exog, train) {
     solar = block(exog$solar, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
     hol   = exog$hol,
     wx    = block(exog$wx, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
+    wxde  = block(exog$wxde, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
     load  = block(exog$load, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE))
   )
 }
