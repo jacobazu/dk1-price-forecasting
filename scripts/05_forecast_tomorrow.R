@@ -36,13 +36,16 @@ safe <- function(name, f) tryCatch(f(), error = \(e) {
   message(name, " failed: ", conditionMessage(e)); rep(NA_real_, 24)
 })
 
-# -x models
+# -x models, weather for dk1 and germany (germany since the forecast for 14 oct 2026, 09d_weather_de.R)
 exog <- make_exog(daily$date,
                   read_csv("live/neighbours_live.csv", show_col_types = FALSE),
                   NULL,
                   dk_holidays(year(min(daily$date)):year(target)))
-exog$wx <- make_weather(daily$date, read_csv("live/weather_live.csv", show_col_types = FALSE))
-groups  <- c("nb", "hol", "wx")
+exog$wx   <- make_weather(daily$date, read_csv("live/weather_live.csv", show_col_types = FALSE))
+exog$wxde <- make_weather(daily$date, read_csv("live/weather_de_live.csv", show_col_types = FALSE), "wxde")
+# weather missing for tomorrow (failed download) is left out, so there is still a forecast
+groups  <- c("nb", "hol", Filter(\(g) !anyNA(exog[[g]][d, ]), c("wx", "wxde")))
+if (length(groups) < 4) message("Weather missing for ", target, ", models run with: ", paste(groups, collapse = ", "))
 bmtx  <- safe("BMT-X",  \() bmtx_forecast_day(features, exog, d, groups))
 learx <- safe("LEAR-X", \() learx_forecast_day(features, exog, d, groups))
 
@@ -56,19 +59,7 @@ xgb_day <- function(m, ex) {
                    rounds = tun$rounds, seed = as.integer(target))
 }
 xgbx <- safe("XGBoost-X", \() xgb_day("xgbx", exog[groups]))
-# challengers, saved next to the forecast and decided on 1 march 2027 (see scripts/10_evaluate.R)
-# with entso-e load forecasts, only when tomorrow's are out (published by 10:00)
-load_ok <- file.exists("live/load_live.csv")
-if (load_ok) {
-  exog$load <- make_load(daily$date, read_csv("live/load_live.csv", show_col_types = FALSE))
-  load_ok   <- !anyNA(exog$load[d, ])
-}
-groups_l <- c(groups, "load")
-no_load  <- \() stop("no load forecasts for ", target)
-bmtx_load  <- safe("BMT-X with load",     \() if (load_ok) bmtx_forecast_day(features, exog, d, groups_l) else no_load())
-learx_load <- safe("LEAR-X with load",    \() if (load_ok) learx_forecast_day(features, exog, d, groups_l) else no_load())
-xgbx_load  <- safe("XGBoost-X with load", \() if (load_ok) xgb_day("xgbx", exog[groups_l]) else no_load())
-
+# challenger, saved next to the forecast and decided on 1 march 2027 (see scripts/10_evaluate.R)
 # bias-corrected: plus the median error of the ensemble over the 28 days before (R/postprocess.R)
 bias <- safe("Bias", \() {
   past <- all_forecasts("ensemble") |> transmute(date, hour, actual, forecast = ensemble)
@@ -87,10 +78,7 @@ new_forecast <- tibble(
   learx             = round(learx, 2),
   xgbx              = round(xgbx, 2),
   naive_day         = round(naive_day, 2),
-  naive_mix         = round(naive_mix, 2),
-  bmtx_load         = round(bmtx_load, 2),
-  learx_load        = round(learx_load, 2),
-  xgbx_load         = round(xgbx_load, 2)
+  naive_mix         = round(naive_mix, 2)
 ) |>
   add_ensembles() |>   # NA if one failed
   mutate(ensemble_bc = ensemble + bias,

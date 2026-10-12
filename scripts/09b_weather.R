@@ -1,4 +1,4 @@
-# -x models with weather
+# -x models with dk1 weather (the main models add german weather, 09d_weather_de.R)
 # weather archive starts mar 2024
 # xgboost settings from 09_xgb.R
 

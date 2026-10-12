@@ -4,9 +4,8 @@ library(dplyr)
 library(tidyr)
 library(readr)
 
-# ensemble = mean of three, the load challenger the same with entso-e load
-ensemble_parts <- list(ensemble = c("bmtx", "learx", "xgbx"),
-                       ensemble_load = c("bmtx_load", "learx_load", "xgbx_load"))
+# ensemble = mean of the three -x models
+ensemble_parts <- list(ensemble = c("bmtx", "learx", "xgbx"))
 add_ensembles <- function(df) {
   for (e in names(ensemble_parts)) {
     parts <- ensemble_parts[[e]]

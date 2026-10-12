@@ -16,7 +16,6 @@ source("R/tests.R")
 models <- c("ensemble", "bmtx", "learx", "xgbx", "naive_mix")
 # kept in backtest file
 stored <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
-load_cols <- c("bmtx_load", "learx_load", "xgbx_load")   # challenger with entso-e load (09c)
 dir.create("results", showWarnings = FALSE)
 
 prices <- readRDS("data/processed/prices_dk1_hourly.rds")
@@ -27,17 +26,15 @@ actual <- tibble(date = rep(daily$date, each = 24), hour = rep(0:23, times = nro
 
 
 # rebuild backtest forecasts
-bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "bmtx", "xgb", "weather"), ".rds")
+bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "bmtx", "xgb", "weather_de"), ".rds")
 wide <- function(x) x |> select(date, hour, model, forecast) |>
   pivot_wider(names_from = model, values_from = forecast)
 complete_days <- function(x) x |> drop_na() |> group_by(date) |> filter(n() == 24) |> ungroup()
-old_load <- if (file.exists("results/backtest_forecasts.csv"))
-  read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |> select(date, hour, any_of(load_cols)) else NULL
 if (all(file.exists(bt_files))) {
   backtest <- readRDS(bt_files[1]) |>
     select(date, hour, actual, lear, naive_mix) |>
     inner_join(select(readRDS(bt_files[2]), date, hour, bmt), by = c("date", "hour")) |>
-    # -x models with weather
+    # -x models with dk1 and german weather (09d)
     inner_join(wide(readRDS(bt_files[5])), by = c("date", "hour")) |>
     # plain xgboost
     inner_join(wide(filter(readRDS(bt_files[4]), model == "xgb")), by = c("date", "hour")) |>
@@ -45,27 +42,14 @@ if (all(file.exists(bt_files))) {
     complete_days() |>
     select(date, hour, actual, all_of(stored)) |>
     arrange(date, hour)
-  if (!is.null(old_load) && ncol(old_load) > 2) backtest <- left_join(backtest, old_load, by = c("date", "hour"))
   write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
 } else if (file.exists(bt_files[5])) {
-  # only 09b rerun: swap in the new -x models
+  # only 09d rerun: swap in the new -x models
   backtest <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |>
     select(-any_of(c("bmtx", "learx", "xgbx"))) |>
     inner_join(wide(readRDS(bt_files[5])), by = c("date", "hour")) |>
-    complete_days() |>
     select(date, hour, actual, all_of(stored)) |>
-    arrange(date, hour)
-  if (!is.null(old_load) && ncol(old_load) > 2) backtest <- left_join(backtest, old_load, by = c("date", "hour"))
-  write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
-}
-# load challenger from 09c
-if (file.exists("data/processed/forecasts_load.rds")) {
-  ld <- wide(readRDS("data/processed/forecasts_load.rds"))
-  names(ld)[-(1:2)] <- paste0(names(ld)[-(1:2)], "_load")
-  backtest <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |>
-    select(-any_of(load_cols)) |>
-    left_join(ld, by = c("date", "hour")) |>
-    select(date, hour, actual, all_of(stored), any_of(load_cols)) |>
+    complete_days() |>
     arrange(date, hour)
   write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
 }
@@ -334,10 +318,11 @@ write_csv(calib, "results/prob_calibration.csv")
 
 # challengers: run next to the ensemble live, decided once on the live days before the decision date
 # rule (fixed 12 oct 2026): replace the ensemble only if a challenger's mae is lower with p < 0.05
-# (newey-west dm, holm over the two challengers)
+# (newey-west dm, holm over the challengers). load was dropped as a challenger the same day, before any
+# live day: it adds nothing once german weather is in (09e_load.R)
 challenger_start    <- as_date("2026-10-14")
 challenger_decision <- as_date("2027-03-01")
-challengers <- c(ensemble_load = "With ENTSO-E load forecasts", ensemble_bc = "Bias-corrected")
+challengers <- c(ensemble_bc = "Bias-corrected")
 
 bt_ch <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |> add_ensembles()
 bc_bt <- postprocess(transmute(bt_ch, date, hour, actual, ensemble), "ensemble") |>

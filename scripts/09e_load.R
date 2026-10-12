@@ -1,6 +1,7 @@
-# -x models with weather and entso-e load forecasts (dk1 and germany), compared with 09b_weather.R
-# one comparison fixed in advance, so all days count; dm with newey-west variance (R/tests.R).
-# result: lower mae but not significant, so it runs live as a challenger (scripts/10_evaluate.R)
+# -x models with weather (dk1 and germany) and entso-e load forecasts (dk1 and germany), compared with
+# 09d_weather_de.R. dm with newey-west variance (R/tests.R) on all days.
+# result: no gain (ensemble mae 16.98 -> 17.05, p = 0.71), so load is not used. before german weather
+# was added it looked better, but not significantly (19.03 -> 18.71, p = 0.079)
 
 library(dplyr)
 library(tidyr)
@@ -22,9 +23,10 @@ P        <- features$P
 exog <- make_exog(daily$date, readRDS("data/raw/exog_neighbours.rds"), NULL,
                   readRDS("data/processed/holidays_dk.rds"))
 exog$wx   <- make_weather(daily$date, readRDS("data/raw/weather_openmeteo.rds"))
+exog$wxde <- make_weather(daily$date, read_csv("live/weather_de_live.csv", show_col_types = FALSE), "wxde")
 exog$load <- make_load(daily$date, read_csv("live/load_live.csv", show_col_types = FALSE))
 
-groups <- c("nb", "hol", "wx", "load")
+groups <- c("nb", "hol", "wx", "wxde", "load")
 tun    <- read_csv("results/xgb_tuning.csv", show_col_types = FALSE) |> filter(model == "xgbx", chosen)
 
 test_days <- which(daily$date >= as_date("2025-10-01") & complete.cases(P))
@@ -56,7 +58,7 @@ with_ens <- function(x) {
               summarise(forecast = mean(forecast), n = n(), .groups = "drop") |>
               filter(n == 3) |> select(-n) |> mutate(model = "ensemble"))
 }
-both <- inner_join(with_ens(readRDS("data/processed/forecasts_weather.rds")) |> rename(without = forecast),
+both <- inner_join(with_ens(readRDS("data/processed/forecasts_weather_de.rds")) |> rename(without = forecast),
                    with_ens(fc) |> rename(with = forecast), by = c("date", "hour", "model", "actual"))
 both |>
   group_by(model, date) |>

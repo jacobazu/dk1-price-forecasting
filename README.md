@@ -20,8 +20,9 @@ Actions, and the dashboard is rebuilt from the results every day.
   on the other days).
 
 Inputs: DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices (DE, DK2, NO2, SE3, SE4) from D-1,
-holidays, and weather forecasts made 48 hours ahead (wind speed and solar radiation from Open-Meteo).
-Everything is known before the auction. The models are re-estimated every day on the previous two years.
+holidays, and weather forecasts made 48 hours ahead for DK1 and Germany (wind speed and solar radiation
+from Open-Meteo). Everything is known before the auction. The models are re-estimated every day on the
+previous two years.
 
 ## Results
 
@@ -29,10 +30,10 @@ Backtest from 1 October 2025 to 10 October 2026 (375 days), all models on the sa
 
 | Model | MAE (€/MWh) | vs weekly naive |
 |---|---|---|
-| Ensemble | 19.0 | −44% |
-| LEAR-X | 20.3 | −41% |
-| BMT-X | 20.4 | −40% |
-| XGBoost-X | 20.5 | −40% |
+| Ensemble | 17.0 | −50% |
+| XGBoost-X | 18.1 | −47% |
+| BMT-X | 18.2 | −47% |
+| LEAR-X | 18.5 | −46% |
 | Weekly naive | 34.2 | |
 
 The ensemble is significantly more accurate than each of the single models (Diebold-Mariano with a
@@ -42,14 +43,22 @@ three methods compared, and the chance of a negative price), and a battery backt
 battery plans each day with each forecast.
 The current numbers, including the live track record, are on the dashboard.
 
+Since the forecast for 14 October 2026 the models also use German wind and solar forecasts. In the
+backtest that lowered the ensemble's MAE from 19.0 to 17.0 (p < 0.001), and every model and every month
+got better. DK1 is connected to Germany, so German wind and sun move the DK1 price too.
+
 ## Challengers
 
-Two changes looked better in the backtest, but not significantly: ENTSO-E's day-ahead load forecasts
-for DK1 and Germany as extra inputs, and a bias correction (adding the median error of the last 28
-days). Both run live next to the ensemble from 14 October 2026, saved every day before the auction but
-not used as the forecast. The rule was set before the first live day: on 1 March 2027 a challenger
-replaces the ensemble only if its live MAE is lower with p < 0.05 (Diebold-Mariano with Newey-West
-variance, Holm-adjusted for the two challengers). Otherwise the ensemble stays.
+The forecasts run about 6 €/MWh too low on average. Adding the median error of the last 28 days
+removes most of that and lowers the backtest MAE from 17.0 to 16.3 (p = 0.02). But a bias can change
+over time, so this correction is tested live first. From 14 October 2026 it is saved every day before
+the auction, next to the ensemble, but not used as the forecast. On 1 March 2027 it replaces the
+ensemble only if its live MAE is lower with p < 0.05 (Diebold-Mariano with Newey-West variance), a rule
+set before the first live day. Otherwise the ensemble stays.
+
+ENTSO-E's day-ahead load forecasts for DK1 and Germany are downloaded every day too. Before the German
+weather was added they lowered the MAE a little, but not significantly. With it they add nothing, so
+they aren't used.
 
 ## License
 
@@ -67,3 +76,5 @@ is not endorsed by Energinet.
 
 Weather data by [Open-Meteo.com](https://open-meteo.com), licensed under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+Load forecasts from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu).

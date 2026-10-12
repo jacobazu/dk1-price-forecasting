@@ -296,7 +296,7 @@ bmtx_txt <- if (has_bmtx) {
     sprintf("With only what is known before the auction (neighbour prices and holidays) the MAE is %.2f, vs %.2f for DK1 prices only.",
             live$mae, base$mae),
     if (has_eval && "bmtx" %in% eval_acc$model)
-      sprintf(" Adding weather forecasts made 48 hours ahead instead (known before the auction), BMT-X reaches %.1f.",
+      sprintf(" Adding weather forecasts for DK1 and Germany made 48 hours ahead instead (known before the auction), BMT-X reaches %.1f.",
               eval_acc$mae[eval_acc$model == "bmtx"]) else "")
 } else ""
 
@@ -427,18 +427,27 @@ neg_txt <- if (!is.null(prob_neg) && eval_main %in% prob_neg$model) {
 } else ""
 chall_txt <- if (!is.null(chall) && nrow(chall) > 0) {
   bt <- chall[!is.na(chall$backtest_p), ]
-  bt_txt <- if (nrow(bt) > 0 && all(bt$backtest_diff < 0) && all(bt$backtest_p >= 0.05)) {
+  bt_txt <- if (nrow(bt) == 1 && bt$backtest_diff < 0 && bt$backtest_p >= 0.05) {
+    sprintf("It had a lower MAE in the backtest, but not significantly (p %s), which is why it is tested live first.",
+            p_tab(bt$backtest_p))
+  } else if (nrow(bt) == 1 && bt$backtest_diff < 0) {
+    sprintf("It is also significantly better in the backtest (p %s), but the live days decide, as set in advance.",
+            p_tab(bt$backtest_p))
+  } else if (nrow(bt) > 1 && all(bt$backtest_diff < 0) && all(bt$backtest_p >= 0.05)) {
     sprintf("%s had a lower MAE in the backtest, but %s significantly (p %s), which is why they are tested live first.",
             if (nrow(bt) == 2) "Both" else "All of them", if (nrow(bt) == 2) "neither" else "none",
             paste(p_tab(sort(bt$backtest_p)), collapse = " and "))
   } else ""
-  sprintf(paste("Each challenger is saved every day before the auction, like the ensemble, but not shown as the forecast.",
-                "On %s a challenger replaces the ensemble only if its MAE over the live days from %s is lower with",
-                "p < 0.05 (Diebold-Mariano with Newey-West variance, Holm-adjusted for the %d challengers);",
-                "otherwise the ensemble stays. The rule was set before the first live day. %s"),
-          sub("^0", "", format(as_date(chall$decision[1]), "%d %B %Y")),
+  test_txt <- if (nrow(chall) == 1) "Diebold-Mariano with Newey-West variance" else
+    sprintf("Diebold-Mariano with Newey-West variance, Holm-adjusted for the %d challengers", nrow(chall))
+  one <- nrow(chall) == 1
+  sprintf(paste("%s is saved every day before the auction, like the ensemble, but not shown as the forecast.",
+                "On %s %s replaces the ensemble only if its MAE over the live days from %s is lower with",
+                "p < 0.05 (%s). Otherwise the ensemble stays. The rule was set before the first live day. %s"),
+          if (one) "The challenger" else "Each challenger",
+          sub("^0", "", format(as_date(chall$decision[1]), "%d %B %Y")), if (one) "it" else "a challenger",
           sub("^0", "", format(as_date(chall$start[1]), "%d %B %Y")),
-          nrow(chall), bt_txt)
+          test_txt, bt_txt)
 } else ""
 live_cov <- if (has_prob) prob_m[prob_m$chosen, ] else NULL
 live_cov_lab <- if (has_prob) model_labels[[eval_main]] else main_label
@@ -929,7 +938,7 @@ if (has_prob) {
 
 :::
 
-## Row {height=320px}
+## Row {height=240px}
 
 ::: {.card title="Challengers: tested live before they can replace the ensemble"}
 
@@ -945,6 +954,7 @@ if (!is.null(chall) && nrow(chall) > 0) {
               `Live MAE`      = arrow(live_mae_champion, live_mae_challenger),
               `Live p (Holm)` = ifelse(is.na(live_p_holm), "\u2013", p_tab(live_p_holm)),
               Status          = status)
+  if (nrow(chall) == 1) names(ch_tab)[names(ch_tab) == "Live p (Holm)"] <- "Live p"
   cat(knitr::kable(ch_tab, format = "html", align = "lrrrrrl",
                    table.attr = 'class="table table-sm table-striped small"'))
   cat("\n\nMAE: ensemble \u2192 challenger, €/MWh. ", chall_txt, "\n", sep = "")
@@ -987,13 +997,13 @@ if (has_eval) {
 the hourly average of the four quarters.
 
 **Models.** All use the DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices (DE, DK2, NO2,
-SE3, SE4) from D-1, holidays, and weather forecasts made 48 hours ahead
-([Open-Meteo](https://open-meteo.com), wind speed at 100 m at three wind areas through a simple power
-curve, and solar radiation at three solar areas), so everything is known before the noon auction.
-Energinet's own wind and solar forecasts are published at 18:00, after the auction, so they are only
-in the study on the Variables tab. All are re-estimated every day on the previous two years (the
-weather archive starts in March 2024, so the window is shorter until March 2026), on prices
-transformed with asinh((p − median) / MAD).
+SE3, SE4) from D-1, holidays, and weather forecasts made 48 hours ahead for DK1 and Germany
+([Open-Meteo](https://open-meteo.com): wind speed at 100 m through a simple power curve at three wind
+areas in DK1 and five in Germany, and solar radiation at three solar areas in each), so everything is
+known before the noon auction. Energinet's own wind and solar forecasts are published at 18:00, after
+the auction, so they are only in the study on the Variables tab. All are re-estimated every day on the
+previous two years (the weather archive starts in March 2024, so the window is shorter until March
+2026), on prices transformed with asinh((p − median) / MAD).
 
 **BMT-X**, boosting with multiple testing (Kapetanios, Sarafidis & Ventouri), the method from my
 master's thesis: variables are added one at a time, each the most significant given the ones already
@@ -1030,12 +1040,14 @@ those whose 50% and 90% ranges are not significantly off target (Newey-West t te
 Skill vs naive = how much lower the pinball loss is than the same method on the weekly naive forecast.
 The chance of a negative price is read off the same quantiles and scored with the Brier score.
 
-**Challengers:** changes that look better in the backtest but not clearly enough (now ENTSO-E's
-day-ahead load forecasts for DK1 and Germany, published by 10:00, and the bias correction above) run
-next to the ensemble live, with a decision rule fixed in advance (see the Challengers card).
+**Challengers:** changes that could replace the ensemble (now the bias correction above) run next to
+it live first, with a decision rule fixed in advance (see the Challengers card). ENTSO-E's day-ahead load forecasts for DK1 and Germany are downloaded too, but once
+German weather is in the models they add nothing, so they aren't used.
 
-**Live:** each forecast is made at about 10:15 Danish time the day before, after the load forecasts
-are out, saved with the time it was made, and never changed. After the noon auction nothing is saved.
+**Live:** each forecast is made at about 10:15 Danish time the day before, saved with the time it
+was made, and never changed. After the noon auction nothing is saved.
+German weather is used from the forecast for 14 October 2026. The live days before that were made
+without it.
 
 **Data:** [Energi Data Service](https://www.energidataservice.dk) (Energinet).<br>
 **Code:** [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting)<br>
