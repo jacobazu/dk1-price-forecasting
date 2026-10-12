@@ -4,7 +4,10 @@ name: Daily DK1 forecast
 
 on:
   schedule:
-    - cron: "0 8 * * *"   # 08:00 utc
+    # 10:15 danish time in summer and winter: the first of these that is after 10:00 danish time
+    # makes the forecast (entso-e load forecasts are published by 10:00), the other one is skipped
+    - cron: "15 8 * * *"
+    - cron: "15 9 * * *"
   workflow_dispatch:       # "Run workflow" button
   push:
     branches: [master]     # master only
@@ -19,7 +22,27 @@ permissions:
   id-token: write
 
 jobs:
+  # scheduled runs: only after 10:00 danish time, and only if tomorrow has no forecast yet
+  gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      go: ${{ steps.check.outputs.go }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: |
+          hour=$(TZ=Europe/Copenhagen date +%-H)
+          target=$(TZ=Europe/Copenhagen date -d tomorrow +%F)
+          if [ "${{ github.event_name }}" != "schedule" ]; then go=true
+          elif [ "$hour" -lt 10 ]; then go=false
+          elif grep -q ",$target," forecasts/forecasts_live.csv; then go=false
+          else go=true; fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+          echo "danish hour $hour, forecast for $target: run = $go"
+
   forecast:
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7

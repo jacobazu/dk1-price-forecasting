@@ -2,10 +2,10 @@
 
 **Dashboard:** https://jacobazu.github.io/dk1-price-forecasting
 
-Every morning before the noon auction, this repo forecasts the 24 hourly day-ahead prices in DK1
-(western Denmark) for the next day. The forecast is saved and never changed, and it is scored once the
-real prices are known. It all runs on GitHub Actions, and the dashboard is rebuilt from the results
-every day.
+Every morning before the noon auction, this repo forecasts the day-ahead prices in DK1 (western
+Denmark) for the next day, as hourly averages of the auction's quarter-hour prices. The forecast is
+saved and never changed, and it is scored once the real prices are known. It all runs on GitHub
+Actions, and the dashboard is rebuilt from the results every day.
 
 
 ## Models
@@ -35,11 +35,21 @@ Backtest from 1 October 2025 to 10 October 2026 (375 days), all models on the sa
 | XGBoost-X | 20.5 | −40% |
 | Weekly naive | 34.2 | |
 
-The ensemble is significantly more accurate than each of the single models (Diebold-Mariano,
-p < 0.001). The dashboard also has Giacomini-White tests, a model confidence set, bias checks,
-probabilistic forecasts (5–95% quantiles, three methods compared), and a battery backtest where a
-2 MWh battery plans each day with each forecast.
+The ensemble is significantly more accurate than each of the single models (Diebold-Mariano with a
+Newey-West variance, since good and bad days come in runs, p < 0.001). The dashboard also has
+Giacomini-White tests, a model confidence set, bias checks, probabilistic forecasts (5–95% quantiles,
+three methods compared, and the chance of a negative price), and a battery backtest where a 2 MWh
+battery plans each day with each forecast.
 The current numbers, including the live track record, are on the dashboard.
+
+## Challengers
+
+Two changes looked better in the backtest, but not significantly: ENTSO-E's day-ahead load forecasts
+for DK1 and Germany as extra inputs, and a bias correction (adding the median error of the last 28
+days). Both run live next to the ensemble from 14 October 2026, saved every day before the auction but
+not used as the forecast. The rule was set before the first live day: on 1 March 2027 a challenger
+replaces the ensemble only if its live MAE is lower with p < 0.05 (Diebold-Mariano with Newey-West
+variance, Holm-adjusted for the two challengers). Otherwise the ensemble stays.
 
 ## License
 

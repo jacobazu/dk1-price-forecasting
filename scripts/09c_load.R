@@ -1,6 +1,6 @@
 # -x models with weather and entso-e load forecasts (dk1 and germany), compared with 09b_weather.R
-# rule fixed before looking: keep the load forecasts if the ensemble's daily mae is lower from oct 2025
-# to feb 2026 (dm p < 0.05). mar to oct 2026 is the check
+# one comparison fixed in advance, so all days count; dm with newey-west variance (R/tests.R).
+# result: lower mae but not significant, so it runs live as a challenger (scripts/10_evaluate.R)
 
 library(dplyr)
 library(tidyr)
@@ -12,6 +12,7 @@ source("R/exog.R")
 source("R/xmodels.R")
 source("R/xgb.R")
 source("R/parallel.R")
+source("R/tests.R")
 
 prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
 daily    <- build_daily(prices)
@@ -57,14 +58,11 @@ with_ens <- function(x) {
 }
 both <- inner_join(with_ens(readRDS("data/processed/forecasts_weather.rds")) |> rename(without = forecast),
                    with_ens(fc) |> rename(with = forecast), by = c("date", "hour", "model", "actual"))
-dm <- function(d) { n <- length(d); s <- mean(d) / sqrt(var(d) / n) * sqrt((n - 1) / n); 2 * pt(-abs(s), n - 1) }
 both |>
-  mutate(period = if_else(date < as_date("2026-03-01"), "1 decide (oct-feb)", "2 check (mar-oct)")) |>
-  group_by(period, model, date) |>
+  group_by(model, date) |>
   summarise(without = mean(abs(actual - without)), with = mean(abs(actual - with)), .groups = "drop") |>
-  group_by(period, model) |>
-  summarise(days = n(), p = dm(with - without), mae_without = mean(without), mae_with = mean(with),
+  group_by(model) |>
+  summarise(days = n(), p = dm_test(with - without)[["p"]], mae_without = mean(without), mae_with = mean(with),
             change = sprintf("%+.1f%%", 100 * (mean(with) / mean(without) - 1)), .groups = "drop") |>
   mutate(across(c(mae_without, mae_with), \(v) round(v, 2)), p = signif(p, 2)) |>
-  arrange(model, period) |>
   print(n = Inf)

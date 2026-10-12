@@ -7,6 +7,7 @@ source("R/bmt.R")
 source("R/exog.R")
 source("R/xmodels.R")
 source("R/forecasts.R")   # add_ensembles()
+source("R/postprocess.R")
 has_xgb <- requireNamespace("xgboost", quietly = TRUE)
 if (has_xgb) source("R/xgb.R")
 
@@ -55,6 +56,26 @@ xgb_day <- function(m, ex) {
                    rounds = tun$rounds, seed = as.integer(target))
 }
 xgbx <- safe("XGBoost-X", \() xgb_day("xgbx", exog[groups]))
+# challengers, saved next to the forecast and decided on 1 march 2027 (see scripts/10_evaluate.R)
+# with entso-e load forecasts, only when tomorrow's are out (published by 10:00)
+load_ok <- file.exists("live/load_live.csv")
+if (load_ok) {
+  exog$load <- make_load(daily$date, read_csv("live/load_live.csv", show_col_types = FALSE))
+  load_ok   <- !anyNA(exog$load[d, ])
+}
+groups_l <- c(groups, "load")
+no_load  <- \() stop("no load forecasts for ", target)
+bmtx_load  <- safe("BMT-X with load",     \() if (load_ok) bmtx_forecast_day(features, exog, d, groups_l) else no_load())
+learx_load <- safe("LEAR-X with load",    \() if (load_ok) learx_forecast_day(features, exog, d, groups_l) else no_load())
+xgbx_load  <- safe("XGBoost-X with load", \() if (load_ok) xgb_day("xgbx", exog[groups_l]) else no_load())
+
+# bias-corrected: plus the median error of the ensemble over the 28 days before (R/postprocess.R)
+bias <- safe("Bias", \() {
+  past <- all_forecasts("ensemble") |> transmute(date, hour, actual, forecast = ensemble)
+  b <- bias_day(past, target)
+  if (is.null(b)) stop("too few days for the bias") else b$bias
+})[1]
+
 naive_day <- features$P[d - 1, ]   # same hour yesterday
 naive_mix <- if (features$dow[d] %in% c(1, 6, 7)) features$P[d - 7, ] else naive_day   # last week mon, sat, sun
 
@@ -66,10 +87,14 @@ new_forecast <- tibble(
   learx             = round(learx, 2),
   xgbx              = round(xgbx, 2),
   naive_day         = round(naive_day, 2),
-  naive_mix         = round(naive_mix, 2)
+  naive_mix         = round(naive_mix, 2),
+  bmtx_load         = round(bmtx_load, 2),
+  learx_load        = round(learx_load, 2),
+  xgbx_load         = round(xgbx_load, 2)
 ) |>
   add_ensembles() |>   # NA if one failed
-  mutate(across(starts_with("ensemble"), \(x) round(x, 2)))
+  mutate(ensemble_bc = ensemble + bias,
+         across(starts_with("ensemble"), \(x) round(x, 2)))
 
 # append, never overwrite
 dir.create("forecasts", showWarnings = FALSE)

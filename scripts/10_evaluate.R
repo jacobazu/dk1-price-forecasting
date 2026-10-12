@@ -10,11 +10,13 @@ source("R/mcs.R")
 source("R/forecasts.R")
 source("R/postprocess.R")
 source("R/quantiles.R")
+source("R/tests.R")
 
 # models on the dashboard
 models <- c("ensemble", "bmtx", "learx", "xgbx", "naive_mix")
 # kept in backtest file
 stored <- c("bmtx", "learx", "xgbx", "bmt", "lear", "xgb", "naive_day", "naive_mix")
+load_cols <- c("bmtx_load", "learx_load", "xgbx_load")   # challenger with entso-e load (09c)
 dir.create("results", showWarnings = FALSE)
 
 prices <- readRDS("data/processed/prices_dk1_hourly.rds")
@@ -29,6 +31,8 @@ bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "bmtx", "xgb", 
 wide <- function(x) x |> select(date, hour, model, forecast) |>
   pivot_wider(names_from = model, values_from = forecast)
 complete_days <- function(x) x |> drop_na() |> group_by(date) |> filter(n() == 24) |> ungroup()
+old_load <- if (file.exists("results/backtest_forecasts.csv"))
+  read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |> select(date, hour, any_of(load_cols)) else NULL
 if (all(file.exists(bt_files))) {
   backtest <- readRDS(bt_files[1]) |>
     select(date, hour, actual, lear, naive_mix) |>
@@ -41,6 +45,7 @@ if (all(file.exists(bt_files))) {
     complete_days() |>
     select(date, hour, actual, all_of(stored)) |>
     arrange(date, hour)
+  if (!is.null(old_load) && ncol(old_load) > 2) backtest <- left_join(backtest, old_load, by = c("date", "hour"))
   write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
 } else if (file.exists(bt_files[5])) {
   # only 09b rerun: swap in the new -x models
@@ -49,6 +54,18 @@ if (all(file.exists(bt_files))) {
     inner_join(wide(readRDS(bt_files[5])), by = c("date", "hour")) |>
     complete_days() |>
     select(date, hour, actual, all_of(stored)) |>
+    arrange(date, hour)
+  if (!is.null(old_load) && ncol(old_load) > 2) backtest <- left_join(backtest, old_load, by = c("date", "hour"))
+  write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
+}
+# load challenger from 09c
+if (file.exists("data/processed/forecasts_load.rds")) {
+  ld <- wide(readRDS("data/processed/forecasts_load.rds"))
+  names(ld)[-(1:2)] <- paste0(names(ld)[-(1:2)], "_load")
+  backtest <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |>
+    select(-any_of(load_cols)) |>
+    left_join(ld, by = c("date", "hour")) |>
+    select(date, hour, actual, all_of(stored), any_of(load_cols)) |>
     arrange(date, hour)
   write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
 }
@@ -84,24 +101,6 @@ daily_loss <- function(m, loss = c("abs", "sq")) {
   e <- fc$actual - fc[[m]]
   l <- if (loss == "abs") abs(e) else e^2
   as.numeric(tapply(l, fc$date, mean))
-}
-
-# dm test with hln correction, h = 1
-dm_test <- function(d) {
-  n    <- length(d)
-  dm   <- mean(d) / sqrt(mean((d - mean(d))^2) / n)
-  stat <- dm * sqrt((n - 1) / n)
-  c(stat = stat, p = 2 * pt(-abs(stat), df = n - 1))
-}
-
-# t test with newey-west variance
-nw_test <- function(x, mu = 0, lag = 7) {
-  u  <- x - mean(x)
-  n  <- length(x)
-  lr <- mean(u^2)
-  for (k in 1:lag) lr <- lr + 2 * (1 - k / (lag + 1)) * sum(u[-(1:k)] * u[1:(n - k)]) / n
-  stat <- (mean(x) - mu) / sqrt(lr / n)
-  c(stat = stat, p = 2 * pnorm(-abs(stat)))
 }
 
 gw_test <- function(d) {
@@ -225,17 +224,18 @@ print(post)
 write_csv(post, "results/eval_post.csv")
 
 
-# quantile forecasts (R/quantiles.R)
+# quantile forecasts (R/quantiles.R), naive with the same methods as the benchmark for the ranges
 real  <- setdiff(models, "naive_mix")
+q_models <- c(real, "naive_mix")
 scale <- vol_scale(bind_rows(select(fc, date, hour, actual), actual), sort(unique(fc$date)))
-qf <- bind_rows(lapply(real, \(m) {
+qf <- bind_rows(lapply(q_models, \(m) {
   em <- err_matrix(transmute(fc, date, hour, e = actual - .data[[m]]))
   quantile_offsets(em$dates, em$E, scale$s[match(em$dates, scale$date)]) |>
     mutate(model = m)
 })) |>
   inner_join(fc |>
-               select(date, hour, source, actual, all_of(real)) |>
-               pivot_longer(all_of(real), names_to = "model", values_to = "forecast"),
+               select(date, hour, source, actual, all_of(q_models)) |>
+               pivot_longer(all_of(q_models), names_to = "model", values_to = "forecast"),
              by = c("model", "date", "hour")) |>
   mutate(q = forecast + off, below = actual < q, loss = pinball(actual, q, tau))
 
@@ -292,9 +292,93 @@ prob <- q_day |>
          chosen = if (any(calibrated)) method == method[calibrated][which.min(pinball[calibrated])]
          else method == method[which.min(cal_error)]) |>
   ungroup()
+
+# skill against the naive forecast's error quantiles, same days
+naive_q <- q_day |> filter(model == "naive_mix", method == "emp") |> select(date, pinball_naive = pinball)
+prob <- prob |>
+  left_join(q_day |>
+              inner_join(naive_q, by = "date") |>
+              group_by(model, method) |>
+              summarise(skill   = 1 - mean(pinball) / mean(pinball_naive),
+                        skill_p = dm_test(pinball - pinball_naive)[["p"]], .groups = "drop"),
+            by = c("model", "method"))
 print(prob)
+
+# chance of a negative price from the shown ranges, scored with the brier score against the
+# share of negative prices in the same hour over the 28 days before
+neg_clim <- actual |>
+  arrange(date) |>
+  group_by(hour) |>
+  mutate(clim = sapply(seq_along(date), \(i) {
+    past <- date >= date[i] - 28 & date < date[i]
+    if (sum(past) < 20) NA_real_ else mean(actual[past] < 0)
+  })) |>
+  ungroup() |>
+  select(date, hour, clim)
+neg <- qf |>
+  semi_join(filter(prob, chosen), by = c("model", "method")) |>
+  group_by(model, method, date, hour, actual) |>
+  summarise(p = prob_below(sort(q), tau[order(q)]), .groups = "drop") |>
+  inner_join(neg_clim, by = c("date", "hour")) |>
+  filter(!is.na(clim)) |>
+  mutate(y = as.numeric(actual < 0))
+neg_scores <- neg |>
+  group_by(model, method) |>
+  summarise(hours = n(), neg_hours = sum(y), brier = mean((p - y)^2), brier_clim = mean((clim - y)^2),
+            .groups = "drop") |>
+  mutate(skill = 1 - brier / brier_clim)
+print(neg_scores)
+write_csv(neg_scores, "results/prob_negative.csv")
 write_csv(prob,  "results/prob_scores.csv")
 write_csv(calib, "results/prob_calibration.csv")
+
+# challengers: run next to the ensemble live, decided once on the live days before the decision date
+# rule (fixed 12 oct 2026): replace the ensemble only if a challenger's mae is lower with p < 0.05
+# (newey-west dm, holm over the two challengers)
+challenger_start    <- as_date("2026-10-14")
+challenger_decision <- as_date("2027-03-01")
+challengers <- c(ensemble_load = "With ENTSO-E load forecasts", ensemble_bc = "Bias-corrected")
+
+bt_ch <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |> add_ensembles()
+bc_bt <- postprocess(transmute(bt_ch, date, hour, actual, ensemble), "ensemble") |>
+  transmute(date, hour, ensemble_bc = corrected)
+bt_ch <- left_join(bt_ch, bc_bt, by = c("date", "hour"))
+
+live_ch <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE,
+                    col_types = cols(forecast_made_utc = col_character(), date = col_date(),
+                                     hour = col_integer(), .default = col_double())) |>
+  filter(date >= challenger_start, date < challenger_decision) |>
+  inner_join(actual, by = c("date", "hour"))
+
+compare <- function(x, ch) {
+  if (!ch %in% names(x)) return(tibble(days = 0L))
+  d <- x |>
+    filter(!is.na(ensemble), !is.na(.data[[ch]])) |>
+    group_by(date) |>
+    filter(n() == 24) |>
+    summarise(champion = mean(abs(actual - ensemble)), challenger = mean(abs(actual - .data[[ch]])),
+              .groups = "drop")
+  if (nrow(d) < 2) return(tibble(days = nrow(d)))
+  tibble(days = nrow(d), mae_champion = mean(d$champion), mae_challenger = mean(d$challenger),
+         diff = mean(d$challenger - d$champion), p = dm_test(d$challenger - d$champion)[["p"]])
+}
+challenger_tbl <- bind_rows(lapply(names(challengers), \(ch) {
+  b <- compare(bt_ch, ch); l <- compare(live_ch, ch)
+  bind_cols(tibble(challenger = ch, label = challengers[[ch]]),
+            rename_with(b, \(n) paste0("backtest_", n)), rename_with(l, \(n) paste0("live_", n)))
+}))
+for (v in c(paste0("backtest_", c("mae_champion", "mae_challenger", "diff", "p")),
+            paste0("live_", c("mae_champion", "mae_challenger", "diff", "p")))) {
+  if (!v %in% names(challenger_tbl)) challenger_tbl[[v]] <- NA_real_
+}
+challenger_tbl <- challenger_tbl |>
+  mutate(live_p_holm = p.adjust(live_p, "holm"),
+         status = case_when(Sys.Date() < challenger_decision ~ "running",
+                            !is.na(live_p_holm) & live_diff < 0 & live_p_holm < 0.05 ~ "replaces the ensemble",
+                            TRUE ~ "ensemble kept"),
+         start = challenger_start, decision = challenger_decision)
+print(as.data.frame(challenger_tbl))
+write_csv(challenger_tbl, "results/challengers.csv")
 
 write_csv(accuracy, "results/eval_accuracy.csv")
 write_csv(tests,    "results/eval_tests.csv")

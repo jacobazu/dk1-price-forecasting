@@ -157,6 +157,12 @@ mcs_models <- read_res("results/mcs_models.csv")       # 10_evaluate.R
 xgb_tun    <- read_res("results/xgb_tuning.csv")       # 09_xgb.R
 prob_sc    <- read_res("results/prob_scores.csv")      # 10_evaluate.R
 prob_cal   <- read_res("results/prob_calibration.csv") # 10_evaluate.R
+prob_neg   <- read_res("results/prob_negative.csv")    # 10_evaluate.R
+chall      <- read_res("results/challengers.csv")      # 10_evaluate.R
+if (!is.null(chall)) for (v in c("backtest_mae_champion", "backtest_mae_challenger", "backtest_diff", "backtest_p",
+                                 "live_mae_champion", "live_mae_challenger", "live_p_holm")) {
+  if (!v %in% names(chall)) chall[[v]] <- NA_real_
+}
 has_eval    <- !is.null(eval_acc)
 has_battery <- !is.null(bat_sum)
 
@@ -239,7 +245,7 @@ post_txt <- if (!is.null(eval_post) && eval_main %in% eval_post$model) {
   r <- eval_post[eval_post$model == eval_main, ]
   n_sig <- sum(eval_post$dm_p < 0.05 & eval_post$mae_corr < eval_post$mae_raw)
   med_txt <- sprintf(paste("Bias correction (median error of the last %d days): %s mean error %+.1f to %+.1f, MAE %.1f to %.1f (DM %s);",
-                           "significant for %d of %d models; not used for the live forecast."),
+                           "significant for %d of %d models; it runs live as a challenger (below)."),
                      k_bias, text_labels[[eval_main]], r$mean_error_raw, r$mean_error_corr, r$mae_raw, r$mae_corr, p_txt(r$dm_p),
                      n_sig, nrow(eval_post))
   mz_txt <- if ("mae_mz" %in% names(r)) {
@@ -401,15 +407,38 @@ prob_txt <- if (has_prob) {
   ch  <- prob_m[prob_m$chosen, ]
   bst <- prob_m[prob_m$method == ch$best, ]
   n_cal <- if ("calibrated" %in% names(prob_m)) sum(prob_m$calibrated) else 0
-  why <- if (n_cal == 0) "no method is on target, so the best calibrated is shown" else
+  why <- if (n_cal == 0) "no method is on target, so the best calibrated is used" else
     if (n_cal == 1) "its ranges are the only ones not significantly off target" else
     "it has the lowest pinball loss of the methods whose ranges are on target"
   alt <- if (ch$method != ch$best) sprintf(" %s: lower pinball loss (DM %s), but its ranges are off target (50%% range %s, 90%% range %s).",
                                            q_lab(ch$best), p_txt(ch$dm_p), pct(bst$cov50), pct(bst$cov90)) else ""
-  sprintf(paste("Shown: %s, because %s.%s For %s the shown 90%% range covered %s of hours (target 90%%, %s)",
+  sprintf(paste("Used: %s, because %s.%s For %s its 90%% range covered %s of hours (target 90%%, %s)",
                 "and the 50%% range %s (target 50%%, %s), over %d days."),
           q_low(ch$method), why, alt, text_labels[[eval_main]], pct(ch$cov90), p_txt(ch$cov90_p),
           pct(ch$cov50), p_txt(ch$cov50_p), ch$days)
+} else ""
+neg_txt <- if (!is.null(prob_neg) && eval_main %in% prob_neg$model) {
+  r <- prob_neg[prob_neg$model == eval_main, ]
+  sprintf(paste("The chance of a negative price on the Forecast tab comes from the same ranges. Brier score %.4f,",
+                "against %.4f for the share of negative prices in that hour over the 28 days before: %s %s,",
+                "over %s hours with %d negative prices."),
+          r$brier, r$brier_clim, pct(abs(r$skill)), if (r$skill >= 0) "better" else "worse",
+          prettyNum(r$hours, big.mark = ","), as.integer(r$neg_hours))
+} else ""
+chall_txt <- if (!is.null(chall) && nrow(chall) > 0) {
+  bt <- chall[!is.na(chall$backtest_p), ]
+  bt_txt <- if (nrow(bt) > 0 && all(bt$backtest_diff < 0) && all(bt$backtest_p >= 0.05)) {
+    sprintf("%s had a lower MAE in the backtest, but %s significantly (p %s), which is why they are tested live first.",
+            if (nrow(bt) == 2) "Both" else "All of them", if (nrow(bt) == 2) "neither" else "none",
+            paste(p_tab(sort(bt$backtest_p)), collapse = " and "))
+  } else ""
+  sprintf(paste("Each challenger is saved every day before the auction, like the ensemble, but not shown as the forecast.",
+                "On %s a challenger replaces the ensemble only if its MAE over the live days from %s is lower with",
+                "p < 0.05 (Diebold-Mariano with Newey-West variance, Holm-adjusted for the %d challengers);",
+                "otherwise the ensemble stays. The rule was set before the first live day. %s"),
+          sub("^0", "", format(as_date(chall$decision[1]), "%d %B %Y")),
+          sub("^0", "", format(as_date(chall$start[1]), "%d %B %Y")),
+          nrow(chall), bt_txt)
 } else ""
 live_cov <- if (has_prob) prob_m[prob_m$chosen, ] else NULL
 live_cov_lab <- if (has_prob) model_labels[[eval_main]] else main_label
@@ -877,16 +906,16 @@ tab_attr <- 'class="table table-sm table-striped small"'
 if (has_prob) {
   tab1 <- prob_m |>
     arrange(pinball) |>
-    transmute(Method                = unname(q_methods[method]),
+    transmute(Method                = paste0(unname(q_methods[method]), ifelse(chosen, " (used)", "")),
               Pinball               = round(pinball, 2),
+              `Skill vs naive`      = if ("skill" %in% names(prob_m)) pct(skill) else "\u2013",
               `DM p vs best`        = ifelse(is.na(dm_p), "best", p_tab(dm_p)),
-              `50% range covers`    = pct(cov50),
-              `90% range covers`    = pct(cov90),
-              `90% width (€/MWh)`   = round(width90, 1),
-              `Calibration error`   = round(cal_error, 3),
-              Shown                 = ifelse(chosen, "yes", ""))
+              `50% range covers`    = sprintf("%s (p %s)", pct(cov50), p_tab(cov50_p)),
+              `90% range covers`    = sprintf("%s (p %s)", pct(cov90), p_tab(cov90_p)),
+              `Width 50% / 90% (€/MWh)` = sprintf("%.1f / %.1f", width50, width90),
+              `Calibration error`   = round(cal_error, 3))
   cat(knitr::kable(tab1, format = "html", align = "lrrrrrrr", table.attr = tab_attr))
-  cat("\n\n", prob_txt, "\n\n", sep = "")
+  cat("\n\n", prob_txt, " ", neg_txt, "\n\n", sep = "")
   if (!is.null(prob_cal)) {
     tab2 <- prob_cal |>
       filter(model == eval_main, tau %in% c(0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95)) |>
@@ -895,6 +924,30 @@ if (has_prob) {
       transmute(`Share of prices below the quantile` = unname(q_methods[method]), across(ends_with("%")))
     cat(knitr::kable(tab2, format = "html", align = "lrrrrrrr", table.attr = tab_attr))
   }
+}
+```
+
+:::
+
+## Row {height=320px}
+
+::: {.card title="Challengers: tested live before they can replace the ensemble"}
+
+```{r}
+#| output: asis
+if (!is.null(chall) && nrow(chall) > 0) {
+  arrow <- function(a, b) ifelse(is.na(a), "\u2013", sprintf("%.1f \u2192 %.1f", a, b))
+  ch_tab <- chall |>
+    transmute(Challenger      = label,
+              `Backtest MAE`  = arrow(backtest_mae_champion, backtest_mae_challenger),
+              `Backtest p`    = ifelse(is.na(backtest_p), "\u2013", p_tab(backtest_p)),
+              `Live days`     = live_days,
+              `Live MAE`      = arrow(live_mae_champion, live_mae_challenger),
+              `Live p (Holm)` = ifelse(is.na(live_p_holm), "\u2013", p_tab(live_p_holm)),
+              Status          = status)
+  cat(knitr::kable(ch_tab, format = "html", align = "lrrrrrl",
+                   table.attr = 'class="table table-sm table-striped small"'))
+  cat("\n\nMAE: ensemble \u2192 challenger, €/MWh. ", chall_txt, "\n", sep = "")
 }
 ```
 
@@ -930,6 +983,9 @@ if (has_eval) {
 
 ::: {.card title="How it works"}
 
+**Target.** Since 1 October 2025 the auction sets a price for every quarter-hour; the forecasts are for
+the hourly average of the four quarters.
+
 **Models.** All use the DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices (DE, DK2, NO2,
 SE3, SE4) from D-1, holidays, and weather forecasts made 48 hours ahead
 ([Open-Meteo](https://open-meteo.com), wind speed at 100 m at three wind areas through a simple power
@@ -953,8 +1009,9 @@ test period and kept fixed. `r xgb_txt`
 **Benchmark:** the weekly naive: last week's prices on Mondays, Saturdays and Sundays, yesterday's on
 other days. rMAE = MAE relative to it.
 
-**Tests:** best model vs each other model. DM = Diebold-Mariano on the daily average absolute error
-(HLN correction), GW = Giacomini-White, hours = how many of the 24 hours it is significantly better /
+**Tests:** best model vs each other model. DM = Diebold-Mariano on the daily average absolute error,
+with a Newey-West variance over one week of lags because good and bad days come in runs (and the HLN
+correction), GW = Giacomini-White, hours = how many of the 24 hours it is significantly better /
 worse (Holm). The model confidence set (Hansen, Lunde & Nason, 10%, 7-day block bootstrap) keeps the
 models that can't be told apart from the best one.
 
@@ -968,12 +1025,17 @@ ways: the plain error quantiles; the same scaled by last week's volatility; and 
 Candès 2021), which also nudges the quantile levels each day after it sees whether the prices fell
 below them. Scored with the pinball loss (average over the `r length(taus)` levels, lower is better). Calibration
 error = average distance between the level and the share of prices below it. Calibration first, then
-sharpness (Gneiting, Balabdaoui & Raftery 2007): the method shown has the lowest pinball loss among
+sharpness (Gneiting, Balabdaoui & Raftery 2007): the method used has the lowest pinball loss among
 those whose 50% and 90% ranges are not significantly off target (Newey-West t test on the daily coverage).
-The chance of a negative price is read off the same quantiles.
+Skill vs naive = how much lower the pinball loss is than the same method on the weekly naive forecast.
+The chance of a negative price is read off the same quantiles and scored with the Brier score.
 
-**Live:** each forecast is saved before the noon auction the day before, with the time it was made,
-and never changed. After noon nothing is saved.
+**Challengers:** changes that look better in the backtest but not clearly enough (now ENTSO-E's
+day-ahead load forecasts for DK1 and Germany, published by 10:00, and the bias correction above) run
+next to the ensemble live, with a decision rule fixed in advance (see the Challengers card).
+
+**Live:** each forecast is made at about 10:15 Danish time the day before, after the load forecasts
+are out, saved with the time it was made, and never changed. After the noon auction nothing is saved.
 
 **Data:** [Energi Data Service](https://www.energidataservice.dk) (Energinet).<br>
 **Code:** [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting)<br>

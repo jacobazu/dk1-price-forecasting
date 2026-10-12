@@ -4,10 +4,14 @@ library(dplyr)
 library(tidyr)
 library(readr)
 
-# ensemble = mean of three
-ensemble_parts <- list(ensemble = c("bmtx", "learx", "xgbx"))
+# ensemble = mean of three, the load challenger the same with entso-e load
+ensemble_parts <- list(ensemble = c("bmtx", "learx", "xgbx"),
+                       ensemble_load = c("bmtx_load", "learx_load", "xgbx_load"))
 add_ensembles <- function(df) {
-  for (e in names(ensemble_parts)) df[[e]] <- rowMeans(as.matrix(df[, ensemble_parts[[e]]]))
+  for (e in names(ensemble_parts)) {
+    parts <- ensemble_parts[[e]]
+    df[[e]] <- if (all(parts %in% names(df))) rowMeans(as.matrix(df[, parts])) else NA_real_
+  }
   df
 }
 
@@ -25,7 +29,7 @@ all_forecasts <- function(models) {
   live <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE,
                    col_types = cols(forecast_made_utc = col_character(), date = col_date(),
                                     hour = col_integer(), .default = col_double()))
-  for (m in setdiff(unlist(ensemble_parts), names(live))) live[[m]] <- NA_real_
+  for (m in setdiff(ensemble_parts$ensemble, names(live))) live[[m]] <- NA_real_
   live <- add_ensembles(live)
   for (m in setdiff(models, names(live))) live[[m]] <- NA_real_
   live <- live |>
