@@ -64,7 +64,16 @@ xgb_design <- function(features, rows, exog = NULL) {
       m
     }))
   }
-  cbind(X, nb, ws, wx,
+  # entso-e load forecasts
+  ld <- NULL
+  if (!is.null(exog$load)) {
+    ld <- do.call(cbind, lapply(c("loaddk1_d0", "loadde_d0"), \(v) {
+      m <- series(exog$load, v)
+      colnames(m) <- paste0(sub("_d0", "", v), c("", "_mean"))
+      m
+    }))
+  }
+  cbind(X, nb, ws, wx, ld,
         hol_d0 = rep24(exog$hol[rows, "hol_d0"]),
         hol_d1 = rep24(exog$hol[rows, "hol_d1"]))
 }

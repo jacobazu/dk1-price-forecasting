@@ -72,6 +72,13 @@ make_weather <- function(dates, weather) {
   cbind(wpow, solar)
 }
 
+# entso-e day-ahead load forecasts for dk1 and germany, published by 10:00 the day before
+make_load <- function(dates, load) {
+  dk <- to_daily(load, "load_DK1", dates); colnames(dk) <- paste0("loaddk1_d0_h", 0:23)
+  de <- to_daily(load, "load_DE", dates);  colnames(de) <- paste0("loadde_d0_h", 0:23)
+  cbind(dk, de)
+}
+
 make_exog <- function(dates, neighbours, wind_solar, holidays) {
   areas <- c("DE", "DK2", "NO2", "SE3", "SE4")
   nb <- do.call(cbind, lapply(areas, \(a) {
@@ -114,6 +121,7 @@ transform_exog <- function(exog, train) {
     wind  = block(exog$wind,  \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
     solar = block(exog$solar, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
     hol   = exog$hol,
-    wx    = block(exog$wx, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE))
+    wx    = block(exog$wx, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
+    load  = block(exog$load, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE))
   )
 }
