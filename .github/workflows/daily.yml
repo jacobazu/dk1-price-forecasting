@@ -13,6 +13,8 @@ on:
     branches: [master]     # master only
     paths:
       - "index.qmd"
+      - "backtest.qmd"
+      - "R/dashboard_setup.R"
       - "theme.scss"
       - "results/**"
 
@@ -109,8 +111,9 @@ jobs:
       - name: Build dashboard
         run: |
           quarto render index.qmd
+          quarto render backtest.qmd
           mkdir -p _site
-          cp index.html _site/
+          cp index.html backtest.html _site/
 
       - uses: actions/upload-pages-artifact@v5
         with:

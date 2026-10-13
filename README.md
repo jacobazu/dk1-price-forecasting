@@ -7,6 +7,13 @@ Denmark) for the next day, as hourly averages of the auction's quarter-hour pric
 saved and never changed, and it is scored once the real prices are known. It all runs on GitHub
 Actions, and the dashboard is rebuilt from the results every day.
 
+## The real test
+
+A backtest shows that a method would have worked. It doesn't show that it works. I made my choices
+with the backtest period in view, so the backtest is probably a bit too good. The live forecasts are
+saved before the prices are known, so they can't be adjusted afterwards. That's the interesting part,
+so the dashboard's main page only shows the live forecasts and their track record. The backtest has
+its own page.
 
 ## Models
 
@@ -24,7 +31,7 @@ holidays, and weather forecasts made 48 hours ahead for DK1 and Germany (wind sp
 from Open-Meteo). Everything is known before the auction. The models are re-estimated every day on the
 previous two years.
 
-## Results
+## Backtest results
 
 Backtest from 1 October 2025 to 10 October 2026 (375 days), all models on the same hours:
 
@@ -37,11 +44,11 @@ Backtest from 1 October 2025 to 10 October 2026 (375 days), all models on the sa
 | Weekly naive | 34.2 | |
 
 The ensemble is significantly more accurate than each of the single models (Diebold-Mariano with a
-Newey-West variance, since good and bad days come in runs, p < 0.001). The dashboard also has
+Newey-West variance, since good and bad days come in runs, p < 0.001). The backtest page also has
 Giacomini-White tests, a model confidence set, bias checks, probabilistic forecasts (5–95% quantiles,
 three methods compared, and the chance of a negative price), and a battery backtest where a 2 MWh
 battery plans each day with each forecast.
-The current numbers, including the live track record, are on the dashboard.
+The current backtest numbers are on the backtest page. The live track record is on the main page.
 
 Since the forecast for 14 October 2026 the models also use German wind and solar forecasts. In the
 backtest that lowered the ensemble's MAE from 19.0 to 17.0 (p < 0.001), and every model and every month

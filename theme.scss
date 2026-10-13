@@ -164,5 +164,6 @@ body,
 
 // links
 a { text-decoration: none; }
+.card-body p a { text-decoration: underline; font-weight: 600; }
 a:hover { text-decoration: underline; }
 .navbar a:hover { text-decoration: none; }
