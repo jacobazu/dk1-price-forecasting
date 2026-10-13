@@ -1,4 +1,4 @@
-# entso-e transparency platform, token in ENTSOE_TOKEN (.Renviron locally, secret on github)
+# entso-e api, token in ENTSOE_TOKEN
 
 library(httr2)
 library(dplyr)
@@ -29,7 +29,7 @@ entsoe_get <- function(params) {
   txt
 }
 
-# all points of a document. positions left out repeat the value before (curve type A03)
+# all points of a document, missing positions repeat the one before (curve A03)
 entsoe_points <- function(txt) {
   periods <- regmatches(txt, gregexpr("(?s)<Period>.*?</Period>", txt, perl = TRUE))[[1]]
   bind_rows(lapply(periods, \(p) {
@@ -44,7 +44,7 @@ entsoe_points <- function(txt) {
   }))
 }
 
-# day-ahead total load forecast (mw), hourly averages in utc. published by 10:00 the day before
+# day-ahead load forecast (mw), hourly utc, out by 10:00 the day before
 get_entsoe_load <- function(area, from, to) {
   starts <- seq(as_date(from), as_date(to), by = "3 months")
   pts <- bind_rows(lapply(starts, \(s) {

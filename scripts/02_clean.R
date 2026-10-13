@@ -1,4 +1,3 @@
-# scripts/02_clean.R
 # one hourly dk1 series
 
 library(dplyr)

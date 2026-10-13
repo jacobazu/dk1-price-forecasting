@@ -36,14 +36,14 @@ safe <- function(name, f) tryCatch(f(), error = \(e) {
   message(name, " failed: ", conditionMessage(e)); rep(NA_real_, 24)
 })
 
-# -x models, weather for dk1 and germany (germany since the forecast for 14 oct 2026, 09d_weather_de.R)
+# -x models with dk1 and german weather (german from 14 oct 2026)
 exog <- make_exog(daily$date,
                   read_csv("live/neighbours_live.csv", show_col_types = FALSE),
                   NULL,
                   dk_holidays(year(min(daily$date)):year(target)))
 exog$wx   <- make_weather(daily$date, read_csv("live/weather_live.csv", show_col_types = FALSE))
 exog$wxde <- make_weather(daily$date, read_csv("live/weather_de_live.csv", show_col_types = FALSE), "wxde")
-# weather missing for tomorrow (failed download) is left out, so there is still a forecast
+# missing weather is left out, so there is still a forecast
 groups  <- c("nb", "hol", Filter(\(g) !anyNA(exog[[g]][d, ]), c("wx", "wxde")))
 if (length(groups) < 4) message("Weather missing for ", target, ", models run with: ", paste(groups, collapse = ", "))
 bmtx  <- safe("BMT-X",  \() bmtx_forecast_day(features, exog, d, groups))
@@ -59,8 +59,7 @@ xgb_day <- function(m, ex) {
                    rounds = tun$rounds, seed = as.integer(target))
 }
 xgbx <- safe("XGBoost-X", \() xgb_day("xgbx", exog[groups]))
-# challenger, saved next to the forecast and decided on 1 march 2027 (see scripts/10_evaluate.R)
-# bias-corrected: plus the median error of the ensemble over the 28 days before (R/postprocess.R)
+# challenger: ensemble + median error of the last 28 days, saved but not shown, decided 1 mar 2027
 bias <- safe("Bias", \() {
   past <- all_forecasts("ensemble") |> transmute(date, hour, actual, forecast = ensemble)
   b <- bias_day(past, target)

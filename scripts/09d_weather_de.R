@@ -1,9 +1,5 @@
-# -x models with weather for dk1 and for germany (open-meteo, made 48h ahead), compared with 09b_weather.R
-# one comparison fixed in advance, so all days count; dm with newey-west variance (R/tests.R).
-# rule set before running: if the ensemble mae is lower with p < 0.05, german weather goes into the
-# main models; otherwise it runs live as a challenger
-# result: ensemble mae 19.05 -> 16.98 (-10.9%, p < 0.001), lower for all three models and in every
-# month, so the main models use it from the forecast for 14 oct 2026
+# -x models with german weather too, vs 09b_weather.R. rule set before: use it if mae drops with p < 0.05
+# result: ensemble mae 19.05 -> 16.98 (-10.9%, p < 0.001), used from the forecast for 14 oct 2026
 
 library(dplyr)
 library(tidyr)

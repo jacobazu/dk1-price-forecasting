@@ -1,4 +1,3 @@
-# scripts/03_benchmarks.R
 # naive benchmarks
 
 

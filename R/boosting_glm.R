@@ -1,16 +1,4 @@
-#' Multiple Testing Boosting model selection procedure
-#'
-#' @param y Numeric vector (length T), typically 0/1.
-#' @param X Numeric matrix (T x N) of candidate regressors.
-#' @param Xcond Optional numeric matrix (T x Kc) of always-included controls.
-#' @param pval Numeric scalar in (0,1).
-#' @param delta1 Numeric scalar >= 1. Default 1.
-#' @param delta2 Numeric scalar >= 1. Default 1.
-#' @param link One of "logit", "probit", "mean". Default "logit".
-#' @param maxit Max iterations for GLM fitting.
-#'
-#' @return Logical vector of length N indicating selected regressors.
-#' @export
+# boosting with multiple testing (kapetanios, sarafidis & ventouri), returns which columns of X are picked
 boosting_glm <- function(y,
                          X,
                          Xcond = NULL,
@@ -22,7 +10,7 @@ boosting_glm <- function(y,
 
   link <- match.arg(link)
 
-  ## ---- input checks ----
+  # input checks
   if (!is.numeric(y)) stop("y must be numeric.")
   y <- as.numeric(y)
 
@@ -54,14 +42,14 @@ boosting_glm <- function(y,
   if (delta1 < 1) stop("delta1 must be greater than or equal to 1.")
   if (delta2 < 1) stop("delta2 must be greater than or equal to 1.")
 
-  ## ---- thresholds ----
+  # thresholds
   p_val1 <- pval / (N^(delta1 - 1))
   t_threshold1 <- stats::qnorm(1 - p_val1 / (2 * N))
 
   p_val2 <- pval / (N^(delta2 - 1))
   t_threshold2 <- stats::qnorm(1 - p_val2 / (2 * N))
 
-  ## ---- helper: abs t/z-stat for first column ----
+  # abs t/z-stat of the first column
   abs_t_first <- function(Xcand, Xsel, Xcond_local) {
 
     Xr <- cbind(Xcand, Xsel, Xcond_local)
@@ -85,7 +73,7 @@ boosting_glm <- function(y,
       return(abs(sm$coefficients["V1", "z value"]))
     }
 
-    ## mean link = OLS
+    # mean link = ols
     fit <- stats::lm(fml, data = df)
     sm <- summary(fit)
 
@@ -93,7 +81,7 @@ boosting_glm <- function(y,
     abs(sm$coefficients["V1", "t value"])
   }
 
-  ## ---- initial stage ----
+  # initial stage
   ind <- rep(FALSE, N)
   ts  <- numeric(N)
 
@@ -105,7 +93,7 @@ boosting_glm <- function(y,
   if (is.finite(ts[max_i]) && ts[max_i] > t_threshold1)
     ind[max_i] <- TRUE
 
-  ## ---- boosting loop ----
+  # boosting loop
   repeat {
 
     ts <- rep(-Inf, N)

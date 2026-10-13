@@ -1,20 +1,7 @@
-# revenue at risk for the battery planned with the ensemble, runs daily after 11_battery.R
-# scenarios for a day: the 24-hour errors of the 60 days before it (whole days, so the hours stay
-# correlated), put through that day's plan. three methods:
-#   hs     = errors as they were
-#   fhs    = errors scaled by last week's price sd, as for the ranges (R/quantiles.R)
-#   normal = normal with the mean and sd of the hs scenarios
-# 95% var and es, measured from the expected revenue (mean of the scenarios)
-# set before running: a method counts as calibrated if kupiec (share of misses), christoffersen
-# (misses in clusters) and acerbi-szekely z2 (es) all have p >= 0.05; the one used is the calibrated
-# method with the lowest fz0 loss
-# result 12 oct: none calibrated. hs and fhs miss too often (60 days give 3 tail scenarios), normal has
-# the right rate but its misses cluster and its es is too small
-# added after that, so the live days are its real test:
-#   ewma   = filtered historical simulation: each past day's errors divided by the ewma volatility of
-#            the errors expected for that day (lambda 0.94), times the one expected for the day, up to
-#            250 days
-# result: ewma passes all three (below the floor on 7.3% of days, kupiec p = 0.074) and has the lowest fz0
+# revenue at risk for the ensemble's battery plan, runs daily after 11_battery.R
+# scenarios: past days' 24-hour errors through the day's plan, four ways (hs, fhs, normal, ewma)
+# rule set before running: calibrated = kupiec, christoffersen and acerbi-szekely p >= 0.05, then lowest fz0
+# ewma was added after the other three failed, so the live days are its real test
 
 library(dplyr)
 library(tidyr)
@@ -35,7 +22,7 @@ daily  <- build_daily(prices)
 P      <- as.matrix(daily[, -1])
 actual <- tibble(date = rep(daily$date, each = 24), hour = rep(0:23, times = nrow(P)), actual = as.vector(t(P)))
 
-# days with a forecast and prices, plus the latest forecast (it may not have prices yet)
+# days with forecast and prices, plus the latest forecast
 fc <- all_forecasts("ensemble")
 live <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE,
                  col_types = cols(forecast_made_utc = col_character(), date = col_date(),
@@ -73,7 +60,7 @@ risk_day <- function(D, q, planned) {
                normal = tail_stats_normal(planned + mean(adj$hs), sd(adj$hs)),
                ewma   = tail_stats(planned + adj$ewma))
   list(stats = tibble(date = D, method = rownames(st), planned = planned, as_tibble(st)),
-       # shortfalls below the expected revenue, to simulate from in the es test
+       # shortfalls below expected revenue, for the es test
        scen = list(hs = mean(adj$hs) - adj$hs, fhs = mean(adj$fhs) - adj$fhs, normal = sd(adj$hs),
                    ewma = mean(adj$ewma) - adj$ewma))
 }
@@ -111,8 +98,7 @@ tests <- bind_rows(lapply(names(r_methods), \(m) {
          live_days = sum(x$source == "live"), live_misses = sum(x$miss & x$source == "live"))
 }))
 
-# fz0 by day for the dm test against the best. all methods scored from the same point, the planned
-# revenue, which their tails are always below
+# fz0 by day for the dm test, all scored from the planned revenue
 fz_day <- risk |>
   mutate(fz = fz0(realized - planned, floor - planned, tail - planned)) |>
   select(date, method, fz) |>

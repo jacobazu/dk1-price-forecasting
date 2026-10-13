@@ -99,7 +99,7 @@ tryCatch({
 }, error = \(e) message("Weather not updated: ", conditionMessage(e)))
 
 
-# open-meteo for german wind and solar areas, made 48h ahead. kept from march 2024 for the backtest
+# open-meteo for germany, made 48h ahead, kept from march 2024
 tryCatch({
   source("R/weather.R")
   file_wd <- "live/weather_de_live.csv"
@@ -117,7 +117,7 @@ tryCatch({
 }, error = \(e) message("German weather not updated: ", conditionMessage(e)))
 
 
-# entso-e day-ahead load forecasts, needs ENTSOE_TOKEN (secret on github). kept from 2023 for the backtest
+# entso-e load forecasts, needs ENTSOE_TOKEN, kept from 2023
 if (nzchar(Sys.getenv("ENTSOE_TOKEN"))) tryCatch({
   source("R/entsoe.R")
   file_ld <- "live/load_live.csv"

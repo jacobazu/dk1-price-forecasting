@@ -208,7 +208,7 @@ print(post)
 write_csv(post, "results/eval_post.csv")
 
 
-# quantile forecasts (R/quantiles.R), naive with the same methods as the benchmark for the ranges
+# quantile forecasts, the naive with the same methods is the benchmark
 real  <- setdiff(models, "naive_mix")
 q_models <- c(real, "naive_mix")
 scale <- vol_scale(bind_rows(select(fc, date, hour, actual), actual), sort(unique(fc$date)))
@@ -288,8 +288,7 @@ prob <- prob |>
             by = c("model", "method"))
 print(prob)
 
-# chance of a negative price from the shown ranges, scored with the brier score against the
-# share of negative prices in the same hour over the 28 days before
+# chance of a negative price, brier score vs the 28-day share in that hour
 neg_clim <- actual |>
   arrange(date) |>
   group_by(hour) |>
@@ -316,10 +315,8 @@ write_csv(neg_scores, "results/prob_negative.csv")
 write_csv(prob,  "results/prob_scores.csv")
 write_csv(calib, "results/prob_calibration.csv")
 
-# challengers: run next to the ensemble live, decided once on the live days before the decision date
-# rule (fixed 12 oct 2026): replace the ensemble only if a challenger's mae is lower with p < 0.05
-# (newey-west dm, holm over the challengers). load was dropped as a challenger the same day, before any
-# live day: it adds nothing once german weather is in (09e_load.R)
+# challengers: replace the ensemble only if live mae is lower with p < 0.05 (newey-west dm, holm)
+# rule fixed 12 oct 2026, load dropped the same day (09e_load.R)
 challenger_start    <- as_date("2026-10-14")
 challenger_decision <- as_date("2027-03-01")
 challengers <- c(ensemble_bc = "Bias-corrected")

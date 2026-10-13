@@ -1,5 +1,4 @@
-# tests on daily series, newey-west variance with one week of lags
-# daily loss differences are autocorrelated (good and bad weeks), so plain dm tests are too optimistic
+# tests on daily series, newey-west with one week of lags (losses come in runs)
 
 nw_var <- function(x, lag = 7) {
   n <- length(x)
@@ -16,7 +15,7 @@ dm_test <- function(d, lag = 7) {
   c(stat = stat, p = 2 * pt(-abs(stat), df = n - 1))
 }
 
-# t test of a mean, e.g. daily coverage against its target
+# t test of a mean, like daily coverage vs its target
 nw_test <- function(x, mu = 0, lag = 7) {
   stat <- (mean(x) - mu) / sqrt(nw_var(x, lag) / length(x))
   c(stat = stat, p = 2 * pnorm(-abs(stat)))

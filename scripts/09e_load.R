@@ -1,7 +1,5 @@
-# -x models with weather (dk1 and germany) and entso-e load forecasts (dk1 and germany), compared with
-# 09d_weather_de.R. dm with newey-west variance (R/tests.R) on all days.
-# result: no gain (ensemble mae 16.98 -> 17.05, p = 0.71), so load is not used. before german weather
-# was added it looked better, but not significantly (19.03 -> 18.71, p = 0.079)
+# -x models with entso-e load forecasts too, vs 09d_weather_de.R
+# result: no gain (16.98 -> 17.05, p = 0.71), so load isn't used
 
 library(dplyr)
 library(tidyr)

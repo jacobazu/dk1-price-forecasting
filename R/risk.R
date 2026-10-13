@@ -1,6 +1,4 @@
-# revenue at risk for the battery
-# the plan is fixed before the auction, so revenue = sum(price * plan) is linear in the prices:
-# revenue = planned + sum(error * plan). the risk is the forecast errors weighted by the plan
+# revenue at risk for the battery: the plan is fixed, so revenue = planned + sum(error * plan)
 
 alpha_r   <- 0.05    # 95% var and es
 k_r       <- 60      # days of 24-hour errors, as for the ranges
@@ -9,8 +7,7 @@ lambda_r  <- 0.94    # ewma weight, riskmetrics' daily value
 r_methods <- c(hs = "Historical errors", fhs = "Scaled by price volatility", normal = "Normal",
                ewma = "Scaled by recent errors (EWMA)")
 
-# error volatility expected for each day from the days before it: ewma of the daily mean squared
-# error. starts at the mean of the first 30 days, all before the first day with a var
+# expected error volatility per day: ewma of the daily mean squared error, from the first 30 days
 ewma_vol <- function(E, lambda = lambda_r) {
   m <- rowMeans(E^2)
   v <- numeric(length(m))
@@ -19,7 +16,7 @@ ewma_vol <- function(E, lambda = lambda_r) {
   sqrt(v)
 }
 
-# expected revenue, floor (alpha quantile) and mean below the floor, from scenario revenues
+# expected revenue, floor (alpha quantile) and mean below it
 tail_stats <- function(r, alpha = alpha_r) {
   v <- quantile(r, alpha, names = FALSE)
   c(expected = mean(r), floor = v, tail = mean(r[r <= v]))
@@ -32,7 +29,7 @@ tail_stats_normal <- function(mu, s, alpha = alpha_r) {
 
 xlogy <- function(x, y) if (x == 0) 0 else x * log(y)
 
-# kupiec: share of misses vs alpha. exact p from the binomial, misses are few
+# kupiec: share of misses vs alpha, exact binomial p
 kupiec <- function(miss, alpha = alpha_r) {
   n  <- length(miss)
   lr <- function(x) -2 * (xlogy(n - x, 1 - alpha) + xlogy(x, alpha) - xlogy(n - x, 1 - x / n) - xlogy(x, x / n))
@@ -40,7 +37,7 @@ kupiec <- function(miss, alpha = alpha_r) {
   sum(dbinom(0:n, n, alpha)[all_lr >= lr(sum(miss)) - 1e-9])
 }
 
-# christoffersen: does a miss make a miss the next day more likely. p simulated under no clustering
+# christoffersen: do misses cluster, p simulated
 christoffersen <- function(miss, sims = 10000) {
   lr <- function(m) {
     a <- head(m, -1); b <- m[-1]
@@ -56,8 +53,7 @@ christoffersen <- function(miss, sims = 10000) {
   (1 + sum(sim >= obs - 1e-9)) / (1 + sims)
 }
 
-# acerbi-szekely z2 for the es, with x = shortfall below the expected revenue
-# z2 > 0: the bad days are worse than the es says. p simulated from each day's own scenarios
+# acerbi-szekely z2 for the es, > 0 means bad days are worse than the es says, p simulated
 z2_stat <- function(x, var, es, alpha = alpha_r) sum((x / es)[x > var]) / (length(x) * alpha) - 1
 
 z2_test <- function(x, var, es, draw, sims = 5000, alpha = alpha_r) {
@@ -66,6 +62,5 @@ z2_test <- function(x, var, es, draw, sims = 5000, alpha = alpha_r) {
   c(z2 = obs, p = (1 + sum(sim >= obs)) / (1 + sims))
 }
 
-# fz0 loss (patton, ziegel & chen 2019), scores var and es together. y, v, e from a point known before
-# the auction and the same for every method; needs e < 0
+# fz0 loss (patton, ziegel & chen 2019), scores var and es together, needs e < 0
 fz0 <- function(y, v, e, alpha = alpha_r) -(y <= v) * (v - y) / (alpha * e) + v / e + log(-e) - 1

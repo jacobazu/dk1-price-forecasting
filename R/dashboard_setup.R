@@ -1,4 +1,4 @@
-# shared by index.qmd (live) and backtest.qmd: data, results and the numbers in the text
+# shared by index.qmd and backtest.qmd
 
 library(dplyr)
 library(readr)

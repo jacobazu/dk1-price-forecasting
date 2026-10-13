@@ -58,7 +58,7 @@ dk_holidays <- function(years) {
 }
 
 # open-meteo, made 48h ahead
-# wind via simple power curve. prefix "wx" for dk1, "wxde" for germany
+# wind via a simple power curve, wx = dk1, wxde = germany
 make_weather <- function(dates, weather, prefix = "wx") {
   w <- weather |>
     transmute(time,
@@ -72,7 +72,7 @@ make_weather <- function(dates, weather, prefix = "wx") {
   cbind(wpow, solar)
 }
 
-# entso-e day-ahead load forecasts for dk1 and germany, published by 10:00 the day before
+# entso-e load forecasts, dk1 and germany
 make_load <- function(dates, load) {
   dk <- to_daily(load, "load_DK1", dates); colnames(dk) <- paste0("loaddk1_d0_h", 0:23)
   de <- to_daily(load, "load_DE", dates);  colnames(de) <- paste0("loadde_d0_h", 0:23)
