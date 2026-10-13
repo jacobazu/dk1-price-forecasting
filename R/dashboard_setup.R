@@ -229,13 +229,12 @@ sig_txt <- if (has_eval && nrow(filter(eval_acc, !grepl("^naive", model))) >= 2)
 post_txt <- if (!is.null(eval_post) && eval_main %in% eval_post$model) {
   r <- eval_post[eval_post$model == eval_main, ]
   n_sig <- sum(eval_post$dm_p < 0.05 & eval_post$mae_corr < eval_post$mae_raw)
-  med_txt <- sprintf(paste("Bias correction (median error of the last %d days): %s mean error %+.1f to %+.1f, MAE %.1f to %.1f (DM %s);",
-                           "significant for %d of %d models; it runs live as a challenger (below)."),
-                     k_bias, text_labels[[eval_main]], r$mean_error_raw, r$mean_error_corr, r$mae_raw, r$mae_corr, p_txt(r$dm_p),
-                     n_sig, nrow(eval_post))
+  med_txt <- sprintf(paste("Bias correction (median error, last %d days): mean error %+.1f to %+.1f, MAE %.1f to %.1f (DM %s),",
+                           "significant for %d of %d models. It runs live as a challenger."),
+                     k_bias, r$mean_error_raw, r$mean_error_corr, r$mae_raw, r$mae_corr, p_txt(r$dm_p), n_sig, nrow(eval_post))
   mz_txt <- if ("mae_mz" %in% names(r)) {
-    sprintf("Mincer-Zarnowitz correction (a + b × forecast on the same %d days): MAE %.1f, %s than the median shift (DM %s).",
-            k_bias, r$mae_mz, if (r$mae_mz < r$mae_corr) "better" else "worse", p_txt(r$dm_p_mz_med))
+    sprintf("a + b × forecast instead: MAE %.1f, %s (DM %s).",
+            r$mae_mz, if (r$mae_mz < r$mae_corr) "better" else "worse", p_txt(r$dm_p_mz_med))
   } else ""
   paste(med_txt, mz_txt)
 } else ""
@@ -270,19 +269,14 @@ bmtx_txt <- if (has_bmtx) {
   base  <- bmtx_combo[bmtx_combo$combo == "prices", ]
   live  <- bmtx_combo[bmtx_combo$combo == "nb+hol", ]
   n_in  <- sum(bmtx_combo$in_mcs)
-  ws    <- grepl("wind|solar", bmtx_combo$combo)
   paste0(
-    "The best combination is ", combo_txt(best$combo), " with MAE ", format(round(best$mae, 1), nsmall = 1),
-    sprintf(" (%s%.1f vs DK1 prices only). ", if (best$mae <= base$mae) "\u2212" else "+", abs(best$mae - base$mae)),
-    n_in, " of the ", nrow(bmtx_combo), " combinations are in the 10% model confidence set",
-    if (all(bmtx_combo$in_mcs == ws)) ", exactly the ones with wind or solar. " else ". ",
-    "But the wind and solar day-ahead forecasts are published at 18:00 the day before delivery, after the noon auction, ",
-    "so those combinations could not have been used for a real bid; they show what that information is worth. ",
-    sprintf("With only what is known before the auction (neighbour prices and holidays) the MAE is %.2f, vs %.2f for DK1 prices only.",
-            live$mae, base$mae),
+    sprintf("Best: %s, MAE %.1f (%s%.1f vs prices only). %d of %d combinations are in the 10%% model confidence set. ",
+            combo_txt(best$combo), best$mae, if (best$mae <= base$mae) "−" else "+", abs(best$mae - base$mae),
+            n_in, nrow(bmtx_combo)),
+    "Energinet's wind and solar forecasts come out after the auction, so they only show what that information is worth. ",
+    sprintf("With what is known before the auction the MAE is %.2f (prices only %.2f).", live$mae, base$mae),
     if (has_eval && "bmtx" %in% eval_acc$model)
-      sprintf(" Adding weather forecasts for DK1 and Germany made 48 hours ahead instead (known before the auction), BMT-X reaches %.1f.",
-              eval_acc$mae[eval_acc$model == "bmtx"]) else "")
+      sprintf(" Weather forecasts made 48 hours ahead bring BMT-X to %.1f.", eval_acc$mae[eval_acc$model == "bmtx"]) else "")
 } else ""
 
 # battery
@@ -350,15 +344,11 @@ risk_hit_sub <- if (has_risk) sprintf("target 5%%, %d of %d days, Kupiec %s", ri
 risk_txt <- if (has_risk) {
   u <- risk_u
   if (u$calibrated) {
-    sprintf(paste("Used: %s. The revenue fell below its floor on %s of %d days, %s (Kupiec %s). The misses",
-                  "don't cluster (Christoffersen %s), and the bad days aren't significantly worse than its ES says",
-                  "(Acerbi\u2013Sz\u00e9kely %s)."),
-            low1(u$label), pct(u$miss_rate), u$days,
-            if (u$miss_rate > 0.05) "a bit more than the 5% target, but not significantly" else "close to the 5% target",
-            p_txt(u$kupiec_p), p_txt(u$christoffersen_p), p_txt(u$z2_p))
+    sprintf(paste("Used: %s. Below the floor on %s of %d days (Kupiec %s). The misses don't cluster (Christoffersen %s)",
+                  "and aren't worse than the ES says (Acerbi–Székely %s)."),
+            low1(u$label), pct(u$miss_rate), u$days, p_txt(u$kupiec_p), p_txt(u$christoffersen_p), p_txt(u$z2_p))
   } else {
-    sprintf("No method passes all three tests, so %s is shown, with the lowest FZ0 score. Read its numbers with care.",
-            low1(u$label))
+    sprintf("No method passes all three tests, so %s is shown, with the lowest FZ0 score.", low1(u$label))
   }
 } else ""
 
@@ -419,49 +409,18 @@ prob_m  <- if (!is.null(prob_sc)) prob_sc[prob_sc$model == eval_main, ] else NUL
 has_prob <- !is.null(prob_m) && nrow(prob_m) > 0
 prob_txt <- if (has_prob) {
   ch  <- prob_m[prob_m$chosen, ]
-  bst <- prob_m[prob_m$method == ch$best, ]
-  n_cal <- if ("calibrated" %in% names(prob_m)) sum(prob_m$calibrated) else 0
-  why <- if (n_cal == 0) "no method is on target, so the best calibrated is used" else
-    if (n_cal == 1) "its ranges are the only ones not significantly off target" else
-    "it has the lowest pinball loss of the methods whose ranges are on target"
-  alt <- if (ch$method != ch$best) sprintf(" %s: lower pinball loss (DM %s), but its ranges are off target (50%% range %s, 90%% range %s).",
-                                           q_lab(ch$best), p_txt(ch$dm_p), pct(bst$cov50), pct(bst$cov90)) else ""
-  sprintf(paste("Used: %s, because %s.%s For %s its 90%% range covered %s of hours (target 90%%, %s)",
-                "and the 50%% range %s (target 50%%, %s), over %d days."),
-          q_low(ch$method), why, alt, text_labels[[eval_main]], pct(ch$cov90), p_txt(ch$cov90_p),
-          pct(ch$cov50), p_txt(ch$cov50_p), ch$days)
+  sprintf("Used: %s, the lowest pinball loss of the methods on target. 90%% range: %s of hours (%s), 50%% range: %s (%s), %d days.",
+          q_low(ch$method), pct(ch$cov90), p_txt(ch$cov90_p), pct(ch$cov50), p_txt(ch$cov50_p), ch$days)
 } else ""
 neg_txt <- if (!is.null(prob_neg) && eval_main %in% prob_neg$model) {
   r <- prob_neg[prob_neg$model == eval_main, ]
-  sprintf(paste("The chance of a negative price on the Forecast tab comes from the same ranges. Brier score %.4f,",
-                "against %.4f for the share of negative prices in that hour over the 28 days before: %s %s,",
-                "over %s hours with %d negative prices."),
-          r$brier, r$brier_clim, pct(abs(r$skill)), if (r$skill >= 0) "better" else "worse",
-          prettyNum(r$hours, big.mark = ","), as.integer(r$neg_hours))
+  sprintf("Chance of a negative price: Brier score %.4f vs %.4f for the 28-day share, %s %s.",
+          r$brier, r$brier_clim, pct(abs(r$skill)), if (r$skill >= 0) "better" else "worse")
 } else ""
 chall_txt <- if (!is.null(chall) && nrow(chall) > 0) {
-  bt <- chall[!is.na(chall$backtest_p), ]
-  bt_txt <- if (nrow(bt) == 1 && bt$backtest_diff < 0 && bt$backtest_p >= 0.05) {
-    sprintf("It had a lower MAE in the backtest, but not significantly (p %s), which is why it is tested live first.",
-            p_tab(bt$backtest_p))
-  } else if (nrow(bt) == 1 && bt$backtest_diff < 0) {
-    sprintf("It is also significantly better in the backtest (p %s), but the live days decide, as set in advance.",
-            p_tab(bt$backtest_p))
-  } else if (nrow(bt) > 1 && all(bt$backtest_diff < 0) && all(bt$backtest_p >= 0.05)) {
-    sprintf("%s had a lower MAE in the backtest, but %s significantly (p %s), which is why they are tested live first.",
-            if (nrow(bt) == 2) "Both" else "All of them", if (nrow(bt) == 2) "neither" else "none",
-            paste(p_tab(sort(bt$backtest_p)), collapse = " and "))
-  } else ""
-  test_txt <- if (nrow(chall) == 1) "Diebold-Mariano with Newey-West variance" else
-    sprintf("Diebold-Mariano with Newey-West variance, Holm-adjusted for the %d challengers", nrow(chall))
-  one <- nrow(chall) == 1
-  sprintf(paste("%s is saved every day before the auction, like the ensemble, but not shown as the forecast.",
-                "On %s %s replaces the ensemble only if its MAE over the live days from %s is lower with",
-                "p < 0.05 (%s). Otherwise the ensemble stays. The rule was set before the first live day. %s"),
-          if (one) "The challenger" else "Each challenger",
-          sub("^0", "", format(as_date(chall$decision[1]), "%d %B %Y")), if (one) "it" else "a challenger",
-          sub("^0", "", format(as_date(chall$start[1]), "%d %B %Y")),
-          test_txt, bt_txt)
+  sprintf(paste("Saved every day next to the ensemble, but not shown. On %s it replaces the ensemble only if its live MAE",
+                "is lower with p < 0.05 (Diebold-Mariano, Newey-West). Rule set before the first live day."),
+          sub("^0", "", format(as_date(chall$decision[1]), "%d %B %Y")))
 } else ""
 live_cov <- if (has_prob) prob_m[prob_m$chosen, ] else NULL
 live_cov_lab <- if (has_prob) model_labels[[eval_main]] else main_label

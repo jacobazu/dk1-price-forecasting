@@ -278,14 +278,12 @@ if (is.null(risk_live) || nrow(risk_live) == 0) {
 
 ::: {.card title="How it works"}
 
-The battery's plan for tomorrow is made on the ensemble forecast before the auction. With the plan fixed,
-its revenue is the plan times the prices, so the risk comes from the forecast errors in the hours it
-trades. The scenarios are the 24-hour errors of past days, kept whole so the hours stay correlated, run
-through tomorrow's plan, with filtered historical simulation (each past day's errors scaled by an EWMA of
-the forecast errors before it, λ = 0.94, up to 250 days). VaR is how far below the expected revenue the
-worst day in 20 falls; ES is the average shortfall on those days.
+The plan is fixed before the auction, so the risk is the forecast errors in the hours it trades. Past days'
+24-hour errors, scaled by recent volatility (EWMA), are run through tomorrow's plan.
 
-The method was chosen in a backtest of four ways to build the scenarios. Want to see the backtest? [Click here](backtest.html).
+VaR: how far below expected the worst day in 20 falls. ES: the average shortfall on those days.
+
+The method won a backtest of four. Want to see the backtest? [Click here](backtest.html).
 
 :::
 
@@ -316,67 +314,21 @@ if (!is.null(chall) && nrow(chall) > 0) {
 
 :::
 
-## Row {height=920px}
+## Row {height=480px}
 
 ::: {.card title="How it works"}
 
-**Target.** Since 1 October 2025 the auction sets a price for every quarter-hour; the forecasts are for
-the hourly average of the four quarters.
+**Forecast.** Tomorrow's hourly prices (the average of the four quarter-hours), made at about 10:15 the day before and never changed.
 
-**Models.** All use the DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices (DE, DK2, NO2,
-SE3, SE4) from D-1, holidays, and weather forecasts made 48 hours ahead for DK1 and Germany
-([Open-Meteo](https://open-meteo.com): wind speed at 100 m through a simple power curve at three wind
-areas in DK1 and five in Germany, and solar radiation at three solar areas in each), so everything is
-known before the noon auction. Energinet's own wind and solar forecasts are published at 18:00, after
-the auction, so they are only in the study on the backtest page. All are re-estimated every day on the
-previous two years (the weather archive starts in March 2024, so the window is shorter until March
-2026), on prices transformed with asinh((p − median) / MAD).
+**Inputs.** DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices from D-1, holidays, and weather forecasts made 48 hours ahead for DK1 and Germany. All known before the noon auction. Re-estimated every day on the last two years.
 
-**BMT-X**, boosting with multiple testing (Kapetanios, Sarafidis & Ventouri), the method from my
-master's thesis: variables are added one at a time, each the most significant given the ones already
-in, until none passes a multiple-testing threshold; then OLS. One model per hour.
+**Models.** BMT-X (boosting with multiple testing, from my thesis), LEAR-X (a lasso per hour) and XGBoost-X. The forecast is their average. Benchmark: the weekly naive.
 
-**LEAR-X** (after Lago 2021): one LASSO per hour on the same variables, lambda by BIC.
+**Ranges.** 5–95% quantiles from each model's recent errors. The chance of a negative price comes from the same quantiles.
 
-**XGBoost-X**: boosted trees, one model for all hours. Depth and rounds picked on `r if (!is.null(xgb_tun)) xgb_tun$n_days[1] else ""` days before the
-test period and kept fixed. `r xgb_txt`
+**Challengers.** Changes run live next to the ensemble and only replace it if they win on a rule set in advance.
 
-**Ensemble:** the plain average of BMT-X, LEAR-X and XGBoost-X.
-
-**Benchmark:** the weekly naive: last week's prices on Mondays, Saturdays and Sundays, yesterday's on
-other days. rMAE = MAE relative to it.
-
-**Tests:** best model vs each other model. DM = Diebold-Mariano on the daily average absolute error,
-with a Newey-West variance over one week of lags because good and bad days come in runs (and the HLN
-correction), GW = Giacomini-White, hours = how many of the 24 hours it is significantly better /
-worse (Holm). The model confidence set (Hansen, Lunde & Nason, 10%, 7-day block bootstrap) keeps the
-models that can't be told apart from the best one.
-
-**Bias:** mean error above 0 = too low on average; Mincer-Zarnowitz slope above 1 = moves too little
-(MZ p tests intercept 0 and slope 1, Newey-West). Two corrections are tested, both from the last `r k_bias`
-days only: adding the median error, and a + b × forecast from the Mincer-Zarnowitz regression
-(Theil's optimal linear correction).
-
-**Ranges:** quantiles from 5% to 95% from the last `r k_q` days' errors of each model, per hour, in three
-ways: the plain error quantiles; the same scaled by last week's volatility; and adaptive (after Gibbs &
-Candès 2021), which also nudges the quantile levels each day after it sees whether the prices fell
-below them. Scored with the pinball loss (average over the `r length(taus)` levels, lower is better). Calibration
-error = average distance between the level and the share of prices below it. Calibration first, then
-sharpness (Gneiting, Balabdaoui & Raftery 2007): the method used has the lowest pinball loss among
-those whose 50% and 90% ranges are not significantly off target (Newey-West t test on the daily coverage).
-Skill vs naive = how much lower the pinball loss is than the same method on the weekly naive forecast.
-The chance of a negative price is read off the same quantiles and scored with the Brier score.
-
-**Challengers:** changes that could replace the ensemble (now the bias correction above) run next to
-it live first, with a decision rule fixed in advance (see the Challengers card). ENTSO-E's day-ahead load forecasts for DK1 and Germany are downloaded too, but once
-German weather is in the models they add nothing, so they aren't used.
-
-**Live:** each forecast is made at about 10:15 Danish time the day before, saved with the time it
-was made, and never changed. After the noon auction nothing is saved.
-German weather is used from the forecast for 14 October 2026. The live days before that were made
-without it.
-
-**Backtest:** accuracy tables, tests, ranges, the variables study and the battery backtest are on the [backtest page](backtest.html).
+Tests, ranges, the variables study and the battery backtest are on the [backtest page](backtest.html).
 
 **Data:** [Energi Data Service](https://www.energidataservice.dk) (Energinet).<br>
 **Code:** [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting)<br>

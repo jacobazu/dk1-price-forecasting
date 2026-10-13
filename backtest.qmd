@@ -296,13 +296,12 @@ if (has_battery) {
 
 ::: {.card title="How it works"}
 
-Each day a `r bat_desc` plans its charging and selling for tomorrow using the forecast,
-and is then paid the actual prices. The chart and table cover `r bat_period` (live days are added
-once every model has a saved forecast). Perfect foresight plans with the actual prices and is the upper bound.
+Each day a `r bat_desc` plans tomorrow on the forecast and is paid the actual prices, over `r bat_period`.
+Perfect foresight plans on the actual prices.
 
 `r bat_txt`
 
-No fees, no battery wear, hourly instead of 15-minute trading.
+No fees or battery wear.
 
 :::
 
@@ -365,25 +364,14 @@ if (has_risk) {
 
 ::: {.card title="How it works"}
 
-The battery's plan for tomorrow is made on the ensemble forecast before the auction. With the plan fixed,
-its revenue is the plan times the prices, so the risk comes from the forecast errors in the hours it
-trades. The scenarios are the 24-hour errors of past days, kept whole so the hours stay correlated, run
-through tomorrow's plan. VaR is how far below the expected revenue the worst day in 20 falls; ES is the
-average shortfall on those days. VaR and ES in the table are averages over the days.
+Past days' 24-hour errors, run through the day's plan, in four ways: as they were (60 days), scaled by
+last week's price volatility, a normal distribution, and scaled by an EWMA of recent errors (up to 250 days).
 
-Four ways to build the scenarios: the errors of the last 60 days as they were, the same scaled by last
-week's price volatility, a normal distribution with their mean and spread, and filtered historical
-simulation, where each past day's errors are scaled by an EWMA of the forecast errors before it
-(λ = 0.94) and up to 250 days are used.
-
-Tests: Kupiec (is the share of days below the floor 5%), Christoffersen (do those days come in
-clusters) and Acerbi–Székely (are those days worse than the ES says), with simulated p-values since
-there are few misses. The method used passes all three at 5% and then has the lowest FZ0 score, which
-rates VaR and ES together (Patton, Ziegel & Chen 2019). The EWMA method was added on 12 October 2026,
-after the first three failed, so the live days are its real test.
+Rule set before running: pass Kupiec, Christoffersen and Acerbi–Székely at 5%, then the lowest FZ0 score.
+EWMA was added after the first three failed, so the live days are its real test.
 
 `r risk_txt`
 
-No fees, no battery wear, hourly instead of 15-minute trading, as in the battery backtest.
+No fees or battery wear.
 
 :::
