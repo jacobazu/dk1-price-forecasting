@@ -5,4 +5,4 @@ hol,Danish holidays,calendar,known in advance,yes,used
 wx,"Weather forecast for DK1 (wind at 100 m, solar radiation), made 48 hours ahead",Open-Meteo,48 hours before each hour,yes,used
 wxde,"Weather forecast for Germany (wind at 100 m, solar radiation), made 48 hours ahead",Open-Meteo,48 hours before each hour,yes,used
 ,Energinet wind and solar forecasts,Energi Data Service,after the auction,no,dropped: published too late
-,ENTSO-E load forecasts for DK1 and Germany,ENTSO-E,D-1 by 10:00,yes,dropped: no gain, p = 0.71
+,ENTSO-E load forecasts for DK1 and Germany,ENTSO-E,D-1 by 10:00,yes,"dropped: no gain, p = 0.71"

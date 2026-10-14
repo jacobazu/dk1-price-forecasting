@@ -111,6 +111,20 @@ body,
   background: color-mix(in srgb, var(--accent, #f97316) 14%, white);
 }
 
+// tablets and small laptops: four tiles in a row get narrow
+@media (min-width: 576px) and (max-width: 1199.98px) {
+  .kpi-icon { display: none !important; }
+  .kpi-value { font-size: 1.3rem; }
+  .kpi-sub { font-size: 0.75rem; line-height: 1.3; }
+}
+@media (min-width: 576px) and (max-width: 991.98px) {
+  .kpi-label { font-size: 0.72rem; }
+  .kpi-value { font-size: 1.1rem; white-space: normal; }
+  .kpi-unit { white-space: nowrap; }
+  .kpi-sub { display: none !important; }
+}
+.card-body:has(> .kpi) { overflow: hidden !important; }
+
 // tables
 .quarto-dashboard table th { color: #6b7280; font-weight: 600; font-size: 0.8rem; }
 .quarto-dashboard table td,

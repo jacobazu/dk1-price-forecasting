@@ -40,8 +40,8 @@ made_utc  <- tomorrow$forecast_made_utc[1]
 if (is.character(made_utc)) made_utc <- ymd_hm(made_utc, tz = "UTC")
 made_dk   <- with_tz(made_utc, "Europe/Copenhagen")
 
-# scored live days, all and last 30
-scored_all <- fc |> inner_join(actual, by = c("date", "hour"))
+# scored live days with a full forecast, all and last 30
+scored_all <- fc |> filter(!is.na(ensemble)) |> inner_join(actual, by = c("date", "hour"))
 scored     <- scored_all |> filter(date >= max(date) - 29)
 
 eur  <- function(x) format(round(x, 1), nsmall = 1)
