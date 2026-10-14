@@ -4,6 +4,8 @@ Every morning before the noon auction this forecasts tomorrow's hourly day-ahead
 
 Dashboard: [jacobazu.github.io/dk1-price-forecasting](https://jacobazu.github.io/dk1-price-forecasting)
 
+Methods: [one page (PDF)](notes/method.pdf)
+
 ## The real test
 
 A backtest shows that a method would have worked. It doesn't show that it works. I made my choices with the backtest period in view, so the backtest is probably a bit too good. The live forecasts are saved before the prices are known, so they can't be adjusted afterwards. That's the interesting part, so the dashboard's main page only shows the live forecasts and their track record. The backtest has its own page.
