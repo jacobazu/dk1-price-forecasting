@@ -1,6 +1,8 @@
-# Analysis
+# Analysis (hindsight only)
 
-Uses actual data from ENTSO-E, known only after the fact. It explains prices and forecast errors. It is not used by any model and not part of the backtest.
+**Never a forecast input.** Everything here uses data published after the auction. The forecast lives in `scripts/` and `R/` and never reads from this folder; the dashboard won't build if it does.
+
+It is here to explain prices and forecast errors.
 
 - `01_download_entsoe.R`: actual generation by type and actual load for DK1 and Germany, hourly. Needs `ENTSOE_TOKEN`.
 

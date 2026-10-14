@@ -314,15 +314,26 @@ if (!is.null(chall) && nrow(chall) > 0) {
 
 :::
 
-## Row {height=480px}
+## Row {height=640px}
 
 ::: {.card title="How it works"}
 
 **Forecast.** Tomorrow's hourly prices (the average of the four quarter-hours), made at about 10:15 the day before and never changed.
 
-**Inputs.** DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices from D-1, holidays, and weather forecasts made 48 hours ahead for DK1 and Germany. All known before the noon auction, and the same in the backtest. Re-estimated every day on the last two years.
+**Models.** Four forecasts are made every morning and compared: BMT-X (boosting with multiple testing, from my thesis), LEAR-X (a lasso per hour), XGBoost-X, and the ensemble, their average, which is the headline forecast. Benchmark: the weekly naive. Re-estimated every day on the last two years.
 
-**Models.** BMT-X (boosting with multiple testing, from my thesis), LEAR-X (a lasso per hour) and XGBoost-X. The forecast is their average. Benchmark: the weekly naive.
+**Inputs.** Only data published before the noon auction, and the same in the backtest. The list is in `inputs.csv`, and the dashboard won't build if the forecast uses anything else.
+
+```{r}
+#| output: asis
+used <- inputs_reg[inputs_reg$status == "used", ]
+cat(knitr::kable(data.frame(Input = used$input, Source = used$source, Published = used$published),
+                 format = "html", table.attr = 'class="table table-sm small"'))
+dropped <- inputs_reg[inputs_reg$status != "used", ]
+cat("\n\nTried and dropped: ", paste0(dropped$input, " (", sub("^dropped: ", "", dropped$status), ")", collapse = "; "), ".\n", sep = "")
+```
+
+**Hindsight is kept apart.** Data published after the auction (actual generation, load, flows) is only used in the `analysis` folder, to understand prices and errors. It is never a forecast input.
 
 **Ranges.** 5–95% quantiles from each model's recent errors. The chance of a negative price comes from the same quantiles.
 

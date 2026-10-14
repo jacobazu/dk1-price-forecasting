@@ -8,6 +8,7 @@ source("R/exog.R")
 source("R/xmodels.R")
 source("R/forecasts.R")   # add_ensembles()
 source("R/postprocess.R")
+source("R/inputs.R")      # forecast_groups, see inputs.csv
 has_xgb <- requireNamespace("xgboost", quietly = TRUE)
 if (has_xgb) source("R/xgb.R")
 
@@ -43,8 +44,8 @@ exog <- make_exog(daily$date,
 exog$wx   <- make_weather(daily$date, read_csv("live/weather_live.csv", show_col_types = FALSE))
 exog$wxde <- make_weather(daily$date, read_csv("live/weather_de_live.csv", show_col_types = FALSE), "wxde")
 # missing weather is left out, so there is still a forecast
-groups  <- c("nb", "hol", Filter(\(g) !anyNA(exog[[g]][d, ]), c("wx", "wxde")))
-if (length(groups) < 4) message("Weather missing for ", target, ", models run with: ", paste(groups, collapse = ", "))
+groups  <- Filter(\(g) !g %in% c("wx", "wxde") || !anyNA(exog[[g]][d, ]), forecast_groups)
+if (length(groups) < length(forecast_groups)) message("Weather missing for ", target, ", models run with: ", paste(groups, collapse = ", "))
 bmtx  <- safe("BMT-X",  \() bmtx_forecast_day(features, exog, d, groups))
 learx <- safe("LEAR-X", \() learx_forecast_day(features, exog, d, groups))
 

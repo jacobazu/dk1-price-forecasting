@@ -8,6 +8,10 @@ source("R/battery.R")
 source("R/postprocess.R")
 source("R/quantiles.R")
 source("R/forecasts.R")   # add_ensembles()
+source("R/inputs.R")
+
+# the build stops if the forecast uses anything but the inputs in inputs.csv
+inputs_reg <- check_divider()
 
 Sys.setlocale("LC_TIME", "C")   # english dates
 

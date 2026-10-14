@@ -1,4 +1,6 @@
-# analysis only, not a model input: actual generation by type and actual load for dk1 and germany
+# HINDSIGHT ONLY - data published after the auction. Never a forecast input.
+
+# actual generation by type and actual load for dk1 and germany
 # from entso-e, hourly in danish time. needs ENTSOE_TOKEN in .Renviron. writes analysis/data/
 
 library(httr2)

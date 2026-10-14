@@ -12,8 +12,9 @@ source("R/xmodels.R")
 source("R/xgb.R")
 source("R/parallel.R")
 source("R/tests.R")
+source("R/inputs.R")      # forecast_groups, the same list as the live forecast
 
-prices   <- readRDS("data/processed/prices_dk1_hourly.rds")
+prices  <- readRDS("data/processed/prices_dk1_hourly.rds")
 daily    <- build_daily(prices)
 features <- make_features(daily)
 P        <- features$P
@@ -23,8 +24,8 @@ exog <- make_exog(daily$date, readRDS("data/raw/exog_neighbours.rds"),
 exog$wx   <- make_weather(daily$date, readRDS("data/raw/weather_openmeteo.rds"))
 exog$wxde <- make_weather(daily$date, read_csv("live/weather_de_live.csv", show_col_types = FALSE), "wxde")
 
-groups <- c("nb", "hol", "wx", "wxde")
-tun    <- read_csv("results/xgb_tuning.csv", show_col_types = FALSE) |> filter(model == "xgbx", chosen)
+groups <- forecast_groups
+tun   <- read_csv("results/xgb_tuning.csv", show_col_types = FALSE) |> filter(model == "xgbx", chosen)
 
 test_days <- which(daily$date >= as_date("2025-10-01") & complete.cases(P))
 
