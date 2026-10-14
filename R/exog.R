@@ -21,17 +21,6 @@ to_daily <- function(df, col, dates) {
   as.matrix(d)
 }
 
-# linear fill of gaps
-fill_gaps <- function(df, cols) {
-  grid <- tibble(time = seq(min(df$time), max(df$time), by = "hour"))
-  df <- left_join(grid, df, by = "time")
-  for (v in cols) {
-    ok <- !is.na(df[[v]])
-    df[[v]] <- approx(as.numeric(df$time[ok]), df[[v]][ok], xout = as.numeric(df$time), rule = 1)$y
-  }
-  df
-}
-
 easter <- function(y) {
   a <- y %% 19; b <- y %/% 100; c <- y %% 100
   d <- b %/% 4; e <- b %% 4; f <- (b + 8) %/% 25; g <- (b - f + 1) %/% 3
@@ -72,14 +61,7 @@ make_weather <- function(dates, weather, prefix = "wx") {
   cbind(wpow, solar)
 }
 
-# entso-e load forecasts, dk1 and germany
-make_load <- function(dates, load) {
-  dk <- to_daily(load, "load_DK1", dates); colnames(dk) <- paste0("loaddk1_d0_h", 0:23)
-  de <- to_daily(load, "load_DE", dates);  colnames(de) <- paste0("loadde_d0_h", 0:23)
-  cbind(dk, de)
-}
-
-make_exog <- function(dates, neighbours, wind_solar, holidays) {
+make_exog <- function(dates, neighbours, holidays) {
   areas <- c("DE", "DK2", "NO2", "SE3", "SE4")
   nb <- do.call(cbind, lapply(areas, \(a) {
     m <- lag_days(to_daily(neighbours, paste0("price_", a), dates), 1)
@@ -87,19 +69,10 @@ make_exog <- function(dates, neighbours, wind_solar, holidays) {
     m
   }))
   
-  wind <- solar <- NULL
-  if (!is.null(wind_solar)) {
-    ws <- fill_gaps(wind_solar, c("fc_offshore_wind", "fc_onshore_wind", "fc_solar"))
-    wind <- cbind(to_daily(ws, "fc_offshore_wind", dates), to_daily(ws, "fc_onshore_wind", dates))
-    colnames(wind) <- c(paste0("offwind_d0_h", 0:23), paste0("onwind_d0_h", 0:23))
-    solar <- to_daily(ws, "fc_solar", dates)
-    colnames(solar) <- paste0("solar_d0_h", 0:23)
-  }
-  
   hol <- cbind(hol_d0 = as.numeric(dates %in% holidays$date),
                hol_d1 = as.numeric((dates - 1) %in% holidays$date))
   
-  list(nb = nb, wind = wind, solar = solar, hol = hol)
+  list(nb = nb, hol = hol)
 }
 
 # transform on training window
@@ -118,11 +91,8 @@ transform_exog <- function(exog, train) {
       s <- mad(tr, na.rm = TRUE); if (!is.finite(s) || s == 0) s <- sd(tr, na.rm = TRUE)
       asinh((x - median(tr, na.rm = TRUE)) / s)
     }),
-    wind  = block(exog$wind,  \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
-    solar = block(exog$solar, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
     hol   = exog$hol,
     wx    = block(exog$wx, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
-    wxde  = block(exog$wxde, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
-    load  = block(exog$load, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE))
+    wxde  = block(exog$wxde, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE))
   )
 }

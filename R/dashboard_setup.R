@@ -127,9 +127,6 @@ eval_shape <- read_res("results/eval_shape.csv")
 eval_post  <- read_res("results/eval_post.csv")
 backtest   <- read_res("results/backtest_forecasts.csv")
 if (!is.null(backtest)) backtest <- add_ensembles(backtest)
-bmt_sel    <- read_res("results/bmt_selection.csv")    # 06_bmt.R
-bmtx_combo <- read_res("results/bmtx_combos.csv")      # 08_bmtx.R
-bmtx_sel   <- read_res("results/bmtx_selection.csv")   # 08_bmtx.R
 bat_daily  <- read_res("results/battery_daily.csv")    # 11_battery.R
 bat_sum    <- read_res("results/battery_summary.csv")
 bat_tests  <- read_res("results/battery_tests.csv")
@@ -245,8 +242,6 @@ xgb_txt <- if (!is.null(xgb_tun) && any(xgb_tun$chosen)) {
   sprintf("Chosen: %s.", set_txt("xgbx"))
 } else ""
 
-bmt_avg_sel <- if (!is.null(bmt_sel)) format(round(sum(bmt_sel$share) / n_distinct(bmt_sel$target), 1), nsmall = 1) else "\u2013"
-bmt_n_cand  <- if (!is.null(bmt_sel)) n_distinct(bmt_sel$input) else "\u2013"
 eval_period <- if (has_eval) {
   n_live <- if ("n_live_days" %in% names(eval_acc)) eval_acc$n_live_days[1] else 0
   sprintf("%s to %s, %d days (%s), %s hourly forecasts",
@@ -255,28 +250,6 @@ eval_period <- if (has_eval) {
                                   if (n_live == 1) "day" else "days")
           else "backtest only, live days are added once every model has a saved forecast",
           prettyNum(eval_acc$n_hours[1], big.mark = ","))
-} else ""
-
-# bmt-x combinations
-has_bmtx  <- !is.null(bmtx_combo)
-group_txt <- c(nb = "neighbour prices", wind = "wind", solar = "solar", hol = "holidays")
-combo_txt <- function(combo) {
-  if (combo == "prices") return("DK1 prices only")
-  paste("DK1 prices +", paste(group_txt[strsplit(combo, "+", fixed = TRUE)[[1]]], collapse = " + "))
-}
-bmtx_txt <- if (has_bmtx) {
-  best  <- bmtx_combo[1, ]
-  base  <- bmtx_combo[bmtx_combo$combo == "prices", ]
-  live  <- bmtx_combo[bmtx_combo$combo == "nb+hol", ]
-  n_in  <- sum(bmtx_combo$in_mcs)
-  paste0(
-    sprintf("Best: %s, MAE %.1f (%s%.1f vs prices only). %d of %d combinations are in the 10%% model confidence set. ",
-            combo_txt(best$combo), best$mae, if (best$mae <= base$mae) "−" else "+", abs(best$mae - base$mae),
-            n_in, nrow(bmtx_combo)),
-    "Energinet's wind and solar forecasts come out after the auction, so they only show what that information is worth. ",
-    sprintf("With what is known before the auction the MAE is %.2f (prices only %.2f).", live$mae, base$mae),
-    if (has_eval && "bmtx" %in% eval_acc$model)
-      sprintf(" Weather forecasts made 48 hours ahead bring BMT-X to %.1f.", eval_acc$mae[eval_acc$model == "bmtx"]) else "")
 } else ""
 
 # battery
@@ -328,7 +301,7 @@ bat_txt <- if (has_battery) {
 } else ""
 
 # revenue at risk
-eur      <- function(x) paste0(if (x < 0) "\u2212" else "", prettyNum(abs(round(x)), big.mark = ","))
+eur      <- function(x) paste0(ifelse(x < 0, "\u2212", ""), prettyNum(abs(round(x)), big.mark = ","))
 low1     <- function(x) paste0(tolower(substring(x, 1, 1)), substring(x, 2))
 risk_u   <- if (has_risk) risk_tests[risk_tests$used, ][1, ] else NULL
 risk_nx  <- if (has_risk && !is.null(risk_next)) risk_next[risk_next$method == risk_u$method, ] else NULL

@@ -18,7 +18,7 @@ daily    <- build_daily(prices)
 features <- make_features(daily)
 P        <- features$P
 
-exog <- make_exog(daily$date, readRDS("data/raw/exog_neighbours.rds"), NULL,
+exog <- make_exog(daily$date, readRDS("data/raw/exog_neighbours.rds"),
                   readRDS("data/processed/holidays_dk.rds"))
 exog$wx   <- make_weather(daily$date, readRDS("data/raw/weather_openmeteo.rds"))
 exog$wxde <- make_weather(daily$date, read_csv("live/weather_de_live.csv", show_col_types = FALSE), "wxde")

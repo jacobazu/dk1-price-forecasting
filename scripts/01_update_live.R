@@ -117,19 +117,6 @@ tryCatch({
 }, error = \(e) message("German weather not updated: ", conditionMessage(e)))
 
 
-# entso-e load forecasts, needs ENTSOE_TOKEN, kept from 2023
-if (nzchar(Sys.getenv("ENTSOE_TOKEN"))) tryCatch({
-  source("R/entsoe.R")
-  file_ld <- "live/load_live.csv"
-  ld_live <- if (file.exists(file_ld)) read_csv(file_ld, col_types = cols(time = col_datetime(), .default = col_double()))
-  from_ld <- if (is.null(ld_live)) as_date("2023-01-01") else as_date(max(ld_live$time)) - 2
-  ld_new  <- full_join(get_entsoe_load("DK1", from_ld, Sys.Date() + 1),
-                       get_entsoe_load("DE", from_ld, Sys.Date() + 1), by = "time")
-
-  ld_live <- bind_rows(ld_new, ld_live) |>
-    distinct(time, .keep_all = TRUE) |>
-    arrange(time)
-
-  write_csv(ld_live, file_ld)
-  cat("Live load forecasts:", format(min(ld_live$time)), "to", format(max(ld_live$time)), "UTC\n")
-}, error = \(e) message("Load forecasts not updated: ", conditionMessage(e)))
+# timing check for entso-e wind/solar forecasts, not a model input
+if (nzchar(Sys.getenv("ENTSOE_TOKEN"))) tryCatch(source("scripts/check_entsoe_timing.R", local = new.env()),
+                                                 error = \(e) message("ENTSO-E timing check failed: ", conditionMessage(e)))

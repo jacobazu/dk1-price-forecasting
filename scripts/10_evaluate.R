@@ -26,7 +26,7 @@ actual <- tibble(date = rep(daily$date, each = 24), hour = rep(0:23, times = nro
 
 
 # rebuild backtest forecasts
-bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "bmtx", "xgb", "weather_de"), ".rds")
+bt_files <- paste0("data/processed/forecasts_", c("lear", "bmt", "xgb", "weather_de"), ".rds")
 wide <- function(x) x |> select(date, hour, model, forecast) |>
   pivot_wider(names_from = model, values_from = forecast)
 complete_days <- function(x) x |> drop_na() |> group_by(date) |> filter(n() == 24) |> ungroup()
@@ -35,19 +35,19 @@ if (all(file.exists(bt_files))) {
     select(date, hour, actual, lear, naive_mix) |>
     inner_join(select(readRDS(bt_files[2]), date, hour, bmt), by = c("date", "hour")) |>
     # -x models with dk1 and german weather (09d)
-    inner_join(wide(readRDS(bt_files[5])), by = c("date", "hour")) |>
+    inner_join(wide(readRDS(bt_files[4])), by = c("date", "hour")) |>
     # plain xgboost
-    inner_join(wide(filter(readRDS(bt_files[4]), model == "xgb")), by = c("date", "hour")) |>
+    inner_join(wide(filter(readRDS(bt_files[3]), model == "xgb")), by = c("date", "hour")) |>
     inner_join(transmute(actual, date = date + 1, hour, naive_day = actual), by = c("date", "hour")) |>
     complete_days() |>
     select(date, hour, actual, all_of(stored)) |>
     arrange(date, hour)
   write_csv(mutate(backtest, across(-c(date, hour), \(x) round(x, 2))), "results/backtest_forecasts.csv")
-} else if (file.exists(bt_files[5])) {
+} else if (file.exists(bt_files[4])) {
   # only 09d rerun: swap in the new -x models
   backtest <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |>
     select(-any_of(c("bmtx", "learx", "xgbx"))) |>
-    inner_join(wide(readRDS(bt_files[5])), by = c("date", "hour")) |>
+    inner_join(wide(readRDS(bt_files[4])), by = c("date", "hour")) |>
     select(date, hour, actual, all_of(stored)) |>
     complete_days() |>
     arrange(date, hour)
@@ -316,7 +316,7 @@ write_csv(prob,  "results/prob_scores.csv")
 write_csv(calib, "results/prob_calibration.csv")
 
 # challengers: replace the ensemble only if live mae is lower with p < 0.05 (newey-west dm, holm)
-# rule fixed 12 oct 2026, load dropped the same day (09e_load.R)
+# rule fixed 12 oct 2026
 challenger_start    <- as_date("2026-10-14")
 challenger_decision <- as_date("2027-03-01")
 challengers <- c(ensemble_bc = "Bias-corrected")

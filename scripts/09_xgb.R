@@ -17,11 +17,9 @@ P        <- features$P
 
 exog <- make_exog(daily$date,
                   readRDS("data/raw/exog_neighbours.rds"),
-                  readRDS("data/raw/exog_wind_solar.rds"),
                   readRDS("data/processed/holidays_dk.rds"))
 
 window <- 730
-# no energinet wind/solar
 variants <- list(xgb = NULL, xgbx = exog[c("nb", "hol")])
 
 

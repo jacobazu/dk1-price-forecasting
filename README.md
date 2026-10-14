@@ -16,7 +16,18 @@ A backtest shows that a method would have worked. It doesn't show that it works.
 - Ensemble: the average of the three. This is the forecast.
 - Benchmark: the weekly naive (last week's prices on Mon, Sat and Sun, yesterday's on the other days).
 
-Inputs: DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices from D-1, holidays, and weather forecasts made 48 hours ahead for DK1 and Germany. All known before the auction. The models are re-estimated every day on the last two years.
+The models are re-estimated every day on the last two years.
+
+## Inputs
+
+All known before the noon auction, and the same in the backtest and the live forecast:
+
+- DK1 prices from D-1, D-2, D-3 and D-7
+- Neighbour prices from D-1 (DE, DK2, NO2, SE3, SE4)
+- Danish holidays
+- Weather forecasts made 48 hours ahead for DK1 and Germany (Open-Meteo)
+
+Tried and dropped: Energinet's wind and solar forecasts (published after the auction, so they can't be used) and ENTSO-E load forecasts (no gain). The code for those tests is in the git history.
 
 ## Backtest
 
@@ -31,15 +42,14 @@ Inputs: DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices from D-1, holida
 | Weekly naive | 34.2 | |
 
 - The ensemble beats each single model (Diebold-Mariano with Newey-West, p < 0.001).
-- German wind and solar forecasts cut the MAE from 19.0 to 17.0 (p < 0.001). Used from the forecast for 14 Oct 2026.
+- Weather forecasts for Germany cut the MAE from 19.0 to 17.0 (p < 0.001). Used from the forecast for 14 Oct 2026.
 - The forecasts run about 6 €/MWh too low. A bias correction (MAE 17.0 to 16.3, p = 0.02) runs live as a challenger. It replaces the ensemble on 1 Mar 2027 only if its live MAE is lower with p < 0.05.
-- ENTSO-E load forecasts are downloaded too, but add nothing once German weather is in, so they aren't used.
 - Battery revenue at risk: of four methods only EWMA-filtered historical simulation passes the Kupiec, Christoffersen and Acerbi–Székely tests, and only just.
 
-The backtest page has the rest: ranges, the chance of a negative price, the variables study and the battery backtest.
+The backtest page has the rest: ranges, the chance of a negative price and the battery backtest.
 
 ## License
 
 Code: [MIT](LICENSE). Not trading advice.
 
-Data from [Energi Data Service](https://www.energidataservice.dk) (Energinet), used under "Conditions for use of Danish public-sector data". Not covered by the MIT License or endorsed by Energinet. Weather from [Open-Meteo.com](https://open-meteo.com), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Load forecasts from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu).
+Data from [Energi Data Service](https://www.energidataservice.dk) (Energinet), used under "Conditions for use of Danish public-sector data". Not covered by the MIT License or endorsed by Energinet. Weather from [Open-Meteo.com](https://open-meteo.com), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

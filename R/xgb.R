@@ -44,17 +44,6 @@ xgb_design <- function(features, rows, exog = NULL) {
     colnames(m) <- paste0(a, c("_d1", "_d1_mean"))
     m
   }))
-  # energinet wind/solar, study only
-  ws <- NULL
-  if (!is.null(exog$wind)) {
-    ws <- do.call(cbind, lapply(list(c("offwind_d0", "offwind"), c("onwind_d0", "onwind"),
-                                     c("solar_d0", "solar")), \(v) {
-      M <- if (v[2] == "solar") exog$solar else exog$wind
-      m <- series(M, v[1])
-      colnames(m) <- paste0(v[2], c("", "_mean"))
-      m
-    }))
-  }
   # open-meteo weather
   wx <- NULL
   if (!is.null(exog$wx)) {
@@ -73,16 +62,7 @@ xgb_design <- function(features, rows, exog = NULL) {
       m
     }))
   }
-  # entso-e load forecasts
-  ld <- NULL
-  if (!is.null(exog$load)) {
-    ld <- do.call(cbind, lapply(c("loaddk1_d0", "loadde_d0"), \(v) {
-      m <- series(exog$load, v)
-      colnames(m) <- paste0(sub("_d0", "", v), c("", "_mean"))
-      m
-    }))
-  }
-  cbind(X, nb, ws, wx, wxde, ld,
+  cbind(X, nb, wx, wxde,
         hol_d0 = rep24(exog$hol[rows, "hol_d0"]),
         hol_d1 = rep24(exog$hol[rows, "hol_d1"]))
 }

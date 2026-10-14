@@ -39,7 +39,6 @@ safe <- function(name, f) tryCatch(f(), error = \(e) {
 # -x models with dk1 and german weather (german from 14 oct 2026)
 exog <- make_exog(daily$date,
                   read_csv("live/neighbours_live.csv", show_col_types = FALSE),
-                  NULL,
                   dk_holidays(year(min(daily$date)):year(target)))
 exog$wx   <- make_weather(daily$date, read_csv("live/weather_live.csv", show_col_types = FALSE))
 exog$wxde <- make_weather(daily$date, read_csv("live/weather_de_live.csv", show_col_types = FALSE), "wxde")

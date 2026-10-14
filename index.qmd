@@ -320,7 +320,7 @@ if (!is.null(chall) && nrow(chall) > 0) {
 
 **Forecast.** Tomorrow's hourly prices (the average of the four quarter-hours), made at about 10:15 the day before and never changed.
 
-**Inputs.** DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices from D-1, holidays, and weather forecasts made 48 hours ahead for DK1 and Germany. All known before the noon auction. Re-estimated every day on the last two years.
+**Inputs.** DK1 prices from D-1, D-2, D-3 and D-7, neighbour prices from D-1, holidays, and weather forecasts made 48 hours ahead for DK1 and Germany. All known before the noon auction, and the same in the backtest. Re-estimated every day on the last two years.
 
 **Models.** BMT-X (boosting with multiple testing, from my thesis), LEAR-X (a lasso per hour) and XGBoost-X. The forecast is their average. Benchmark: the weekly naive.
 
@@ -328,7 +328,7 @@ if (!is.null(chall) && nrow(chall) > 0) {
 
 **Challengers.** Changes run live next to the ensemble and only replace it if they win on a rule set in advance.
 
-Tests, ranges, the variables study and the battery backtest are on the [backtest page](backtest.html).
+Tests, ranges and the battery backtest are on the [backtest page](backtest.html).
 
 **Data:** [Energi Data Service](https://www.energidataservice.dk) (Energinet).<br>
 **Code:** [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting)<br>

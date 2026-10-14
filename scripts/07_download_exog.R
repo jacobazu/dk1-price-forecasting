@@ -1,5 +1,4 @@
-# download exogenous variables
-# wind/solar after auction, study only
+# download neighbour prices and holidays
 
 library(dplyr)
 library(tidyr)
@@ -49,21 +48,6 @@ neighbours <- bind_rows(nb_old, nb_new) |>
   arrange(time)
 
 
-# dk1 wind and solar
-wind_solar <- fetch("Forecasts_Hour", start, end, "DK1")
-
-if (nrow(wind_solar) > 0) {
-  wind_solar <- wind_solar |>
-    transmute(time  = floor_date(ymd_hms(HourUTC, tz = "UTC"), "hour"),
-              type  = tolower(gsub(" ", "_", ForecastType)),
-              value = ForecastDayAhead) |>
-    group_by(time, type) |>
-    summarise(value = mean(value), .groups = "drop") |>
-    pivot_wider(names_from = type, values_from = value, names_prefix = "fc_") |>
-    arrange(time)
-}
-
-
 holidays <- dk_holidays(year(as_date(start)):(year(Sys.Date()) + 1))
 
 
@@ -82,9 +66,8 @@ coverage <- function(df) {
   }))
 }
 
-print(bind_rows(coverage(neighbours), coverage(wind_solar)), n = Inf)
+print(coverage(neighbours), n = Inf)
 cat("holidays:", nrow(holidays), "days from", format(min(holidays$date)), "to", format(max(holidays$date)), "\n")
 
 saveRDS(neighbours, "data/raw/exog_neighbours.rds")
-saveRDS(wind_solar, "data/raw/exog_wind_solar.rds")
 saveRDS(holidays, "data/processed/holidays_dk.rds")
