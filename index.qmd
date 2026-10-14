@@ -211,7 +211,7 @@ if (nrow(acc_live) > 0) {
 ```
 
 ::: {.card}
-Every forecast here was saved before the auction and never changed. Want to see the backtest? [Click here](backtest.html).
+Every forecast here was saved before the auction and never changed.
 :::
 
 # Revenue at risk {scrolling="true"}
@@ -283,8 +283,6 @@ The plan is fixed before the auction, so the risk is the forecast errors in the 
 
 VaR: how far below expected the worst day in 20 falls. ES: the average shortfall on those days.
 
-The method won a backtest of four. Want to see the backtest? [Click here](backtest.html).
-
 :::
 
 # Method {scrolling="true"}
@@ -299,14 +297,12 @@ if (!is.null(chall) && nrow(chall) > 0) {
   arrow <- function(a, b) ifelse(is.na(a), "\u2013", sprintf("%.1f \u2192 %.1f", a, b))
   ch_tab <- chall |>
     transmute(Challenger      = label,
-              `Backtest MAE`  = arrow(backtest_mae_champion, backtest_mae_challenger),
-              `Backtest p`    = ifelse(is.na(backtest_p), "\u2013", p_tab(backtest_p)),
               `Live days`     = live_days,
               `Live MAE`      = arrow(live_mae_champion, live_mae_challenger),
               `Live p (Holm)` = ifelse(is.na(live_p_holm), "\u2013", p_tab(live_p_holm)),
               Status          = status)
   if (nrow(chall) == 1) names(ch_tab)[names(ch_tab) == "Live p (Holm)"] <- "Live p"
-  cat(knitr::kable(ch_tab, format = "html", align = "lrrrrrl",
+  cat(knitr::kable(ch_tab, format = "html", align = "lrrrl",
                    table.attr = 'class="table table-sm table-striped small"'))
   cat("\n\nMAE: ensemble \u2192 challenger, €/MWh. ", chall_txt, "\n", sep = "")
 }
@@ -322,7 +318,7 @@ if (!is.null(chall) && nrow(chall) > 0) {
 
 **Models.** Four forecasts are made every morning and compared: BMT-X (boosting with multiple testing, from my thesis), LEAR-X (a lasso per hour), XGBoost-X, and the ensemble, their average, which is the headline forecast. Benchmark: the weekly naive. Re-estimated every day on the last two years.
 
-**Inputs.** Only data published before the noon auction, and the same in the backtest. The list is in `inputs.csv`, and the dashboard won't build if the forecast uses anything else.
+**Inputs.** Only data published before the noon auction. The list is in `inputs.csv`, and the dashboard won't build if the forecast uses anything else.
 
 ```{r}
 #| output: asis
@@ -338,8 +334,6 @@ cat("\n\nTried and dropped: ", paste0(dropped$input, " (", sub("^dropped: ", "",
 **Ranges.** 5–95% quantiles from each model's recent errors. The chance of a negative price comes from the same quantiles.
 
 **Challengers.** Changes run live next to the ensemble and only replace it if they win on a rule set in advance.
-
-Tests, ranges and the battery backtest are on the [backtest page](backtest.html).
 
 **Data:** [Energi Data Service](https://www.energidataservice.dk) (Energinet).<br>
 **Code:** [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting)<br>
