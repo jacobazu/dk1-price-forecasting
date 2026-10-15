@@ -1,6 +1,6 @@
 # checks that the day's forecasts were made. a failed run means github sends an email.
 # started by the outside scheduler at 10:50 (price forecast only, still time to run it by hand before the
-# auction) and 11:40 danish time (everything). the cron below is a backup
+# auction) and 11:50 danish time (everything). the cron below is a backup
 
 name: Watchdog
 

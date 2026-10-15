@@ -28,6 +28,12 @@ permissions:
   pages: write             # publish dashboard
   id-token: write
 
+# one run at a time: if the scheduler and github's own timer start at the same minute, the second waits,
+# then sees tomorrow's forecast and skips
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
 jobs:
   # scheduled runs: only between 10:00 and 11:45 danish time (the forecast has to be saved before the noon
   # auction, a run takes about 4 minutes), and only if tomorrow has no forecast yet
@@ -36,7 +42,10 @@ jobs:
     outputs:
       go: ${{ steps.check.outputs.go }}
     steps:
+      # the latest commit, not the one from when the run was queued
       - uses: actions/checkout@v7
+        with:
+          ref: master
       - id: check
         run: |
           now=$(TZ=Europe/Copenhagen date +%H%M)
@@ -55,6 +64,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: master
 
       # r version from renv.lock
       - uses: r-lib/actions/setup-r@v2
