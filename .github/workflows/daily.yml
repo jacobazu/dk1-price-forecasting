@@ -9,6 +9,7 @@ on:
     - cron: "15 8 * * *"
     - cron: "15 9 * * *"
   workflow_dispatch:       # "Run workflow" button. the outside scheduler (cron-job.org) sends scheduled = true
+                           # at 10:15, 10:45 and 11:15 danish time
     inputs:
       scheduled:
         description: "Started by the scheduler: same checks as a scheduled run"
@@ -123,8 +124,14 @@ jobs:
             msg="Forecast for delivery day $target, made $(date -u '+%F %H:%M') UTC"
           fi
           git commit -m "$msg" || echo "Nothing new to commit"
-          git pull --rebase origin master   # in case of new commits
-          git push
+          # a short glitch at github can make the push fail: three tries
+          for try in 1 2 3; do
+            if git pull --rebase origin master && git push; then exit 0; fi
+            git rebase --abort 2>/dev/null || true
+            echo "saving failed (try $try), trying again in 20 seconds"
+            sleep 20
+          done
+          exit 1
 
       - name: Build dashboard
         run: |
