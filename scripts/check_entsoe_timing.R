@@ -22,6 +22,8 @@ count_points <- function(area) {
     req_error(is_error = \(r) FALSE) |>
     req_perform()
   txt <- resp_body_string(resp)
+  reason <- if (resp_status(resp) == 200) "" else
+    paste(regmatches(txt, gregexpr("(?<=<text>)[^<]*", txt, perl = TRUE))[[1]], collapse = " ")
   series <- regmatches(txt, gregexpr("(?s)<TimeSeries>.*?</TimeSeries>", txt, perl = TRUE))[[1]]
   n <- setNames(rep(0L, length(types)), types)
   for (s in series) {
@@ -31,7 +33,7 @@ count_points <- function(area) {
     }
   }
   tibble(run_utc = format(now, "%Y-%m-%d %H:%M", tz = "UTC"), target = target, area = area,
-         status = resp_status(resp), !!!as.list(n))
+         status = resp_status(resp), reason = reason, !!!as.list(n))
 }
 
 file <- "live/entsoe_timing.csv"
