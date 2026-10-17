@@ -14,8 +14,6 @@ A backtest shows that a method would have worked. It doesn't show that it works.
 
 # The forecast
 
-Everything in `scripts/` and `R/`. It only uses data published before the noon auction, and the backtest uses exactly the same inputs.
-
 ## Models
 
 Four forecasts are made every morning and compared:
