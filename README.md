@@ -59,11 +59,6 @@ The backtest page has the rest: ranges, the chance of a negative price and the b
 
 ---
 
-# Analysis (hindsight, not used by the forecast)
-
-The `analysis` folder uses data that is only known after the auction, like actual generation by type and actual load from ENTSO-E. It is there to understand prices and forecast errors, for example why the forecasts are too low in the evening peak on expensive days. Nothing in it is a forecast input, and no forecast code reads from it. An idea from it can only become an input if a version of the data is published before the auction, a test rule is set before the test, and it runs live as a challenger first.
-
----
 
 ## License
 
