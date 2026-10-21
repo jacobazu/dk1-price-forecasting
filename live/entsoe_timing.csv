@@ -9,3 +9,5 @@ run_utc,target,area,status,solar,wind_offshore,wind_onshore,reason
 2026-10-19 08:16,2026-10-20,DE,400,0,0,0,An unexpected error occurred: Text &#39;NA&#39; could not be parsed at index 0
 2026-10-20 08:16,2026-10-21,DK1,400,0,0,0,An unexpected error occurred: Text &#39;NA&#39; could not be parsed at index 0
 2026-10-20 08:16,2026-10-21,DE,400,0,0,0,An unexpected error occurred: Text &#39;NA&#39; could not be parsed at index 0
+2026-10-21 08:16,2026-10-22,DK1,400,0,0,0,An unexpected error occurred: Text &#39;NA&#39; could not be parsed at index 0
+2026-10-21 08:16,2026-10-22,DE,400,0,0,0,An unexpected error occurred: Text &#39;NA&#39; could not be parsed at index 0
