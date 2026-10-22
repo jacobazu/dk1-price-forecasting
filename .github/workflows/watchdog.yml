@@ -47,4 +47,21 @@ jobs:
               fail=1
             fi
           fi
+
+          # the published pages, not only the forecasts: each page carries the time it was built
+          for page in "dk1-price-forecasting 30" "dk1-battery-trade 30" "dk1-imbalance-forecasting 3"; do
+            set -- $page
+            built=$(curl -sf "https://jacobazu.github.io/$1/" | grep -oE '(name="built" content|data-built)="[^"]+"' | head -1 | sed -E 's/.*="([^"]+)"$/\1/')
+            if [ -z "$built" ]; then
+              echo "::warning::$1: no build time on the page"
+              continue
+            fi
+            hours=$(( ($(date -u +%s) - $(date -u -d "$built" +%s)) / 3600 ))
+            if [ "$hours" -le "$2" ]; then
+              echo "$1 page built $hours hours ago: ok"
+            else
+              echo "::error::The $1 page was last built $built ($hours hours ago). Check its deploy."
+              fail=1
+            fi
+          done
           exit $fail

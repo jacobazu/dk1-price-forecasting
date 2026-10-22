@@ -43,6 +43,8 @@ made_dk   <- with_tz(made_utc, "Europe/Copenhagen")
 # scored live days with a full forecast, all and last 30
 scored_all <- fc |> filter(!is.na(ensemble)) |> inner_join(actual, by = c("date", "hour"))
 scored     <- scored_all |> filter(date >= max(date) - 29)
+n_live     <- n_distinct(scored_all$date)
+window_lab <- if (n_live >= 30) "last 30 days" else sprintf("all %d live %s", n_live, if (n_live == 1) "day" else "days")
 
 eur  <- function(x) format(round(x, 1), nsmall = 1)
 
@@ -454,10 +456,28 @@ live_acc <- if (nrow(scored_all) > 0 && all(c(main, "naive_mix") %in% names(scor
 } else NULL
 live_improve <- if (is.null(live_acc)) "–" else paste0(if (live_acc$change < 0) "−" else "+", abs(live_acc$change), "%")
 live_improve_sub <- if (is.null(live_acc)) "starts after the first forecast day" else
-  sprintf("%s vs the weekly naive, MAE over %d live %s since %s", main_label, live_acc$days,
-          if (live_acc$days == 1) "day" else "days", format(live_acc$from, "%d %b"))
+  sprintf("%s, %d live %s since %s. Backtest: %s over %d days", main_label, live_acc$days,
+          if (live_acc$days == 1) "day" else "days", format(live_acc$from, "%d %b"), bt_improve,
+          eval_acc$n_backtest_days[1])
 
 # live revenue at risk days
 risk_live <- if (has_risk && "source" %in% names(risk_daily))
   risk_daily |> filter(method == risk_u$method, source == "live") |> arrange(desc(date)) else NULL
 
+
+# a banner if a visitor opens the page more than 30 hours after it was built (the page is rebuilt every day)
+writeLines(sprintf('<meta name="built" content="%s">
+<style>.stale { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2000; background: #fef2f2; color: #991b1b;
+  border-top: 1px solid #fecaca; font-size: 14px; padding: 10px 20px; text-align: center; }</style>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const built = new Date(document.querySelector("meta[name=built]").content);
+  if (Date.now() - built > 30 * 3600 * 1000) {
+    const el = document.createElement("div");
+    el.className = "stale";
+    el.textContent = "Not updated since " + built.toLocaleString("en-GB", { timeZone: "Europe/Copenhagen",
+      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + " (Danish time). The daily update has not run.";
+    document.body.appendChild(el);
+  }
+});
+</script>', format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")), "stale.html")

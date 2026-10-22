@@ -12,9 +12,10 @@ format:
       - icon: github
         href: https://github.com/jacobazu/dk1-price-forecasting
     include-in-header:
-      text: |
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+      - text: |
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+      - file: stale.html
 execute:
   echo: false
   warning: false
@@ -139,7 +140,7 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_mod
 <div>
 <div class="kpi-label">`r main_label` error (MAE)</div>
 <div class="kpi-value">`r mae(main)`</div>
-<div class="kpi-sub">€/MWh, last 30 days</div>
+<div class="kpi-sub">€/MWh, `r window_lab`</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-graph-up-arrow"></i></div>
 </div>
@@ -150,7 +151,7 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_mod
 <div>
 <div class="kpi-label">Naive error (MAE)</div>
 <div class="kpi-value">`r mae("naive_mix")`</div>
-<div class="kpi-sub">€/MWh, last 30 days</div>
+<div class="kpi-sub">€/MWh, `r window_lab`</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-arrow-repeat"></i></div>
 </div>
@@ -170,7 +171,7 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_mod
 ## Row {height=56%}
 
 ```{r}
-#| title: "Live forecasts vs actual prices, last 30 days (EUR/MWh)"
+#| title: "Live forecasts vs actual prices, up to the last 30 days (EUR/MWh)"
 if (nrow(scored) == 0) {
   cat("The track record starts once the first forecast day has passed.")
 } else {
@@ -196,7 +197,7 @@ if (nrow(scored) == 0) {
 ## Row {height=30%}
 
 ```{r}
-#| title: "Accuracy by model, last 30 days"
+#| title: "Live accuracy by model, up to the last 30 days"
 acc_live <- bind_rows(lapply(models, \(m) {
   s <- scored[!is.na(scored[[m]]), ]
   if (nrow(s) == 0) return(NULL)
@@ -213,7 +214,9 @@ if (nrow(acc_live) > 0) {
 ```
 
 ::: {.card}
-Every forecast here was saved before the auction and never changed.
+Every forecast here was saved before the auction and never changed. A few weeks of live days say little:
+differences of a few percent take months to show. The [backtest](backtest.html) has
+`r eval_acc$n_backtest_days[1]` days.
 :::
 
 # Revenue at risk {scrolling="true"}
