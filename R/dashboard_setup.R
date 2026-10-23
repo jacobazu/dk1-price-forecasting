@@ -7,7 +7,7 @@ library(plotly)
 source("R/battery.R")
 source("R/postprocess.R")
 source("R/quantiles.R")
-source("R/forecasts.R")   # add_ensembles()
+source("R/forecasts.R")
 source("R/inputs.R")
 
 # the build stops if the forecast uses anything but the inputs in inputs.csv
@@ -126,30 +126,30 @@ chart_layout <- function(p, models = NULL, xtitle = "", n_fixed = 1, per_model =
 
 # all from results/*.csv
 read_res <- function(f) if (file.exists(f)) read_csv(f, show_col_types = FALSE) else NULL
-eval_acc   <- read_res("results/eval_accuracy.csv")    # 10_evaluate.R
+eval_acc   <- read_res("results/eval_accuracy.csv")
 eval_tests <- read_res("results/eval_tests.csv")
 eval_bias  <- read_res("results/eval_bias.csv")
 eval_shape <- read_res("results/eval_shape.csv")
 eval_post  <- read_res("results/eval_post.csv")
 backtest   <- read_res("results/backtest_forecasts.csv")
 if (!is.null(backtest)) backtest <- add_ensembles(backtest)
-bat_daily  <- read_res("results/battery_daily.csv")    # 11_battery.R
+bat_daily  <- read_res("results/battery_daily.csv")
 bat_sum    <- read_res("results/battery_summary.csv")
 bat_tests  <- read_res("results/battery_tests.csv")
 bat_setup  <- read_res("results/battery_setup.csv")
-mcs_models <- read_res("results/mcs_models.csv")       # 10_evaluate.R
-xgb_tun    <- read_res("results/xgb_tuning.csv")       # 09_xgb.R
-prob_sc    <- read_res("results/prob_scores.csv")      # 10_evaluate.R
-prob_cal   <- read_res("results/prob_calibration.csv") # 10_evaluate.R
-prob_neg   <- read_res("results/prob_negative.csv")    # 10_evaluate.R
-chall      <- read_res("results/challengers.csv")      # 10_evaluate.R
+mcs_models <- read_res("results/mcs_models.csv")
+xgb_tun    <- read_res("results/xgb_tuning.csv")
+prob_sc    <- read_res("results/prob_scores.csv")
+prob_cal   <- read_res("results/prob_calibration.csv")
+prob_neg   <- read_res("results/prob_negative.csv")
+chall      <- read_res("results/challengers.csv")
 if (!is.null(chall)) for (v in c("backtest_mae_champion", "backtest_mae_challenger", "backtest_diff", "backtest_p",
                                  "live_mae_champion", "live_mae_challenger", "live_p_holm")) {
   if (!v %in% names(chall)) chall[[v]] <- NA_real_
 }
 has_eval    <- !is.null(eval_acc)
 has_battery <- !is.null(bat_sum)
-risk_tests <- read_res("results/battery_risk_tests.csv")   # 12_battery_risk.R
+risk_tests <- read_res("results/battery_risk_tests.csv")
 risk_daily <- read_res("results/battery_risk_daily.csv")
 risk_next  <- read_res("results/battery_risk_next.csv")
 has_risk   <- !is.null(risk_tests) && !is.null(risk_daily) && any(risk_tests$used)
@@ -465,7 +465,7 @@ risk_live <- if (has_risk && "source" %in% names(risk_daily))
   risk_daily |> filter(method == risk_u$method, source == "live") |> arrange(desc(date)) else NULL
 
 
-# a banner if a visitor opens the page more than 30 hours after it was built (the page is rebuilt every day)
+# banner when the page is more than 30 hours old
 writeLines(sprintf('<meta name="built" content="%s">
 <style>.stale { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2000; background: #fef2f2; color: #991b1b;
   border-top: 1px solid #fecaca; font-size: 14px; padding: 10px 20px; text-align: center; }</style>

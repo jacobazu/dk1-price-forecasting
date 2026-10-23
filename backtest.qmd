@@ -211,8 +211,8 @@ if (has_battery) {
 
 ::: {.card title="How it works"}
 
-Each day a `r bat_desc` plans tomorrow on the forecast and is paid the actual prices, over `r bat_period`.
-Perfect foresight plans on the actual prices.
+Each day a simulated `r bat_desc` plans tomorrow on the forecast and is paid the actual prices, over
+`r bat_period`. Perfect foresight plans on the actual prices.
 
 `r bat_txt`
 
@@ -279,11 +279,10 @@ if (has_risk) {
 
 ::: {.card title="How it works"}
 
-Past days' 24-hour errors, run through the day's plan, in four ways: as they were (60 days), scaled by
-last week's price volatility, a normal distribution, and scaled by an EWMA of recent errors (up to 250 days).
-
-Rule set before running: pass Kupiec, Christoffersen and Acerbi–Székely at 5%, then the lowest FZ0 score.
-EWMA was added after the first three failed, so the live days are its real test.
+Past days' errors run through the day's plan in four ways: as they were, scaled by last week's volatility, a
+normal distribution, and scaled by an EWMA. Rule set before running: pass Kupiec, Christoffersen and
+Acerbi–Székely at 5%, then the lowest FZ0 score. EWMA was added after the first three failed, so the live days
+are its real test.
 
 `r risk_txt`
 

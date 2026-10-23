@@ -214,9 +214,8 @@ if (nrow(acc_live) > 0) {
 ```
 
 ::: {.card}
-Every forecast here was saved before the auction and never changed. A few weeks of live days say little:
-differences of a few percent take months to show. The [backtest](backtest.html) has
-`r eval_acc$n_backtest_days[1]` days.
+Every forecast was saved before the auction and never changed. With few live days, small differences say
+little yet. The [backtest](backtest.html) has `r eval_acc$n_backtest_days[1]` days.
 :::
 
 # Revenue at risk {scrolling="true"}
@@ -283,10 +282,8 @@ if (is.null(risk_live) || nrow(risk_live) == 0) {
 
 ::: {.card title="How it works"}
 
-The plan is fixed before the auction, so the risk is the forecast errors in the hours it trades. Past days'
-24-hour errors, scaled by recent volatility (EWMA), are run through tomorrow's plan.
-
-VaR: how far below expected the worst day in 20 falls. ES: the average shortfall on those days.
+A simulated battery, no physical asset. Past days' forecast errors, scaled by recent volatility, are run through
+tomorrow's plan. VaR: the worst day in 20. ES: the average shortfall on those days.
 
 :::
 
@@ -333,8 +330,6 @@ cat(knitr::kable(data.frame(Input = used$input, Source = used$source, Published 
 dropped <- inputs_reg[inputs_reg$status != "used", ]
 cat("\n\nTried and dropped: ", paste0(dropped$input, " (", sub("^dropped: ", "", dropped$status), ")", collapse = "; "), ".\n", sep = "")
 ```
-
-**Hindsight is kept apart.** Data published after the auction (actual generation, load, flows) is only used in the `analysis` folder, to understand prices and errors. It is never a forecast input.
 
 **Ranges.** 5–95% quantiles from each model's recent errors. The chance of a negative price comes from the same quantiles.
 
