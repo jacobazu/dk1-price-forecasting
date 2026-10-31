@@ -1,6 +1,6 @@
 model,mcs_p,in_mcs
 naive_mix,0,FALSE
-learx,0.0065,FALSE
-bmtx,0.1155,TRUE
-xgbx,0.1155,TRUE
+learx,0.011,FALSE
+bmtx,0.09,FALSE
+xgbx,0.09,FALSE
 ensemble,1,TRUE
