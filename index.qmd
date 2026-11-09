@@ -113,17 +113,12 @@ for (m in fc_models) {
   col <- model_colors[[m]]
   vis <- m == fc_models[1]
   p <- p |>
-    add_lines(data = d, x = ~hour, y = ~q0.05, line = list(width = 0), showlegend = FALSE,
-              visible = vis, hoverinfo = "skip") |>
-    add_lines(data = d, x = ~hour, y = ~q0.95, line = list(width = 0), fill = "tonexty",
-              fillcolor = rgba(col, 0.07), name = paste0("90% range, ", q_low(q_method(m))),
-              visible = vis, hoverinfo = "skip") |>
+    add_lines(data = scen_xy(m), x = ~x, y = ~y, xaxis = "x2", line = list(color = rgba(col, 0.22), width = 1),
+              name = "60 possible days (past errors)", visible = vis, hoverinfo = "skip") |>
     # on a hidden second x axis, so the shapes don't take over the hover box
-    add_polygons(data = violin_xy(m), x = ~x, y = ~y, xaxis = "x2", fillcolor = rgba(col, 0.30),
+    add_polygons(data = violin_xy(m), x = ~x, y = ~y, xaxis = "x2", fillcolor = rgba(col, 0.20),
                  line = list(color = rgba(col, 0.6), width = 0.8), name = "Where each hour could land",
                  visible = vis, hoverinfo = "skip") |>
-    add_lines(data = d, x = ~hour, y = ~f, line = list(width = 0), showlegend = FALSE,
-              visible = vis, hoverinfo = "skip") |>
     add_lines(data = d, x = ~hour, y = ~f, text = ~range90,
               name = paste0(model_labels[[m]], " forecast ", format(latest, "%a %d %b"),
                             ", made ", format(made_dk, "%a %d %b %H:%M")),
@@ -132,7 +127,7 @@ for (m in fc_models) {
               hovertemplate = paste0("%{y:.0f} €/MWh%{text}<extra>", model_labels[[m]], "</extra>"))
 }
 
-p |> skip_hover() |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_model = 5) |>
+p |> skip_hover() |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_model = 3) |>
   layout(xaxis = list(dtick = 3, range = c(-0.6, 23.6)),
          xaxis2 = list(overlaying = "x", matches = "x", visible = FALSE))
 ```

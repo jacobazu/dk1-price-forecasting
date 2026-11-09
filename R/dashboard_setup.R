@@ -356,6 +356,7 @@ past_fc <- function(m) {
   bind_rows(lv, bt) |> distinct(date, hour, .keep_all = TRUE)
 }
 bands <- list()   # each past day's 5% and 95% offsets, for the misses on the track record
+scen  <- list()   # tomorrow's whole-day scenarios per model
 fans <- lapply(setNames(models, models), \(m) {
   if (m == "naive_mix" || !m %in% names(tomorrow) || all(is.na(tomorrow[[m]]))) return(NULL)
   x  <- bind_rows(transmute(past_fc(m), date, hour, e = actual - f),
@@ -366,8 +367,32 @@ fans <- lapply(setNames(models, models), \(m) {
     tidyr::pivot_wider(id_cols = c(date, hour), names_from = tau, values_from = off, names_prefix = "o")
   q  <- q_all |> filter(date == latest)
   if (nrow(q) == 0) return(NULL)
+  # whole-day scenarios: tomorrow's forecast plus each of the last k_q days' full error curve, scaled to this
+  # week's volatility (the same errors the range is built from). hours stay together, as they do in reality
+  vs   <- vol_scale(all_prices, em$dates)$s
+  past <- em$dates >= latest - k_q & em$dates < latest & complete.cases(em$E) & !is.na(vs)
+  fm   <- tomorrow[[m]][match(0:23, tomorrow$hour)]
+  if (any(past) && !is.na(vs[em$dates == latest])) {
+    scen[[m]] <<- sweep(vs[em$dates == latest] * em$E[past, , drop = FALSE] / vs[past], 2, fm, "+")
+  }
   tomorrow |> select(hour, f = all_of(m)) |> inner_join(q, by = "hour") |> mutate(q = f + off)
 })
+
+# scenario lines for the chart, one trace: each day separated by a gap
+scen_xy <- function(m) {
+  S <- scen[[m]]
+  if (is.null(S)) return(tibble(x = NA_real_, y = NA_real_))
+  tibble(x = rep(c(0:23, NA), nrow(S)), y = as.vector(t(cbind(S, NA))))
+}
+
+# how often the price really stayed inside the 90% range, last 30 scored days
+trust <- function(m) {
+  if (is.null(bands[[m]])) return(NULL)
+  b <- scored_all |> select(date, hour, actual, f = all_of(m)) |> filter(date >= latest - 30) |>
+    inner_join(bands[[m]], by = c("date", "hour")) |> filter(!is.na(o0.05), !is.na(actual))
+  if (nrow(b) < 24 * 7) return(NULL)
+  list(share = mean(b$actual >= b$f + b$o0.05 & b$actual <= b$f + b$o0.95), days = n_distinct(b$date))
+}
 fan_wide <- function(m) {
   out <- tibble(hour = 0:23, q0.05 = NA_real_, q0.25 = NA_real_, q0.75 = NA_real_, q0.95 = NA_real_)
   if (is.null(fans[[m]])) return(out)
@@ -432,10 +457,16 @@ yest_text <- function(m) {
   if (nrow(y) == 0) return("")
   inside <- sum(y$actual >= y$f + y$o0.05 & y$actual <= y$f + y$o0.95)
   above  <- sum(y$actual > y$f + y$o0.95)
-  sprintf("Yesterday (%s): inside the 90%% range in %d of %d hours%s. Average error %s €/MWh.",
+  tr <- trust(m)
+  badge <- if (is.null(tr)) "" else {
+    gap <- abs(tr$share - 0.9)
+    sprintf(" <span class='trust %s'>Last %d days: inside the 90%% range %s of the time</span>",
+            if (gap <= 0.03) "ok" else if (gap <= 0.06) "warn" else "bad", tr$days, sprintf("%.0f%%", 100 * tr$share))
+  }
+  sprintf("Yesterday (%s): inside the 90%% range in %d of %d hours%s.%s",
           format(latest - 1, "%a %d %b"), inside, nrow(y),
           if (inside == nrow(y)) "" else sprintf(" (%d above, %d below)", above, nrow(y) - inside - above),
-          eur(mean(abs(y$actual - y$f))))
+          badge)
 }
 line_models <- c(main, setdiff(setdiff(models, "naive_mix"), main))
 risk_html <- paste0(vapply(line_models, \(m) sprintf("<span class='risk-m' data-m='%s'%s>%s<br><span class='risk-check'>%s</span></span>", m,

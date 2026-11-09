@@ -168,3 +168,7 @@ a:hover { text-decoration: underline; }
 
 .risk-line { display: block !important; font-size: 1rem; line-height: 1.45; padding: 2px 4px; }
 .risk-check { color: #6b7280; font-size: 0.9rem; }
+.trust { white-space: nowrap; padding: 1px 6px; border-radius: 4px; font-size: 0.85rem; }
+.trust.ok { background: #dcfce7; color: #166534; }
+.trust.warn { background: #fef3c7; color: #92400e; }
+.trust.bad { background: #fee2e2; color: #991b1b; }
