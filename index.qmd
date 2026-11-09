@@ -171,26 +171,65 @@ p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_mod
 ## Row {height=56%}
 
 ```{r}
-#| title: "Live forecasts vs actual prices, up to the last 30 days (EUR/MWh)"
+#| title: "Live forecasts vs actual prices, up to the last 30 days (EUR/MWh). Shaded: where the price left the 90% range. Below: hours outside it each day"
 if (nrow(scored) == 0) {
   cat("The track record starts once the first forecast day has passed.")
 } else {
   sc <- scored |> mutate(time = as_datetime(date, tz = "Europe/Copenhagen") + hours(hour))
+  blank <- tibble(time = sc$time[1], y = NA_real_, y2 = NA_real_)
+
+  # gaps between the actual price and the 90% range, as closed shapes, one per run of hours
+  gap_shapes <- function(t, edge, a) {
+    r <- rle(!is.na(edge))
+    ends <- cumsum(r$lengths)
+    out <- lapply(which(r$values), \(k) {
+      i <- (ends[k] - r$lengths[k] + 1):ends[k]
+      if (length(i) == 1) i <- c(i, i)   # one hour: a sliver around the point
+      tibble(time = c(t[i], rev(t[i]), NA), y = c(edge[i], rev(a[i]), NA))
+    })
+    if (length(out) == 0) blank["time"] |> mutate(y = NA_real_) else bind_rows(out)
+  }
 
   p2 <- plot_ly(sc, x = ~time) |>
-    add_lines(y = ~actual, name = "Actual",
-              line = list(color = ink, width = 1.5),
+    add_lines(y = ~actual, name = "Actual", line = list(color = ink, width = 1.5),
               hovertemplate = "%{y:.1f} €/MWh<extra>Actual</extra>")
 
+  bar_w <- 0.6 * 86400000
   for (m in models) {
+    vis <- m == models[1]
+    col <- model_colors[[m]]
+    b <- sc |> select(date, hour, time, actual, f = all_of(m))
+    b <- if (!is.null(bands[[m]])) left_join(b, bands[[m]], by = c("date", "hour")) else mutate(b, o0.05 = NA_real_, o0.95 = NA_real_)
+    b <- b |> mutate(lo = f + o0.05, hi = f + o0.95,
+                     above = ifelse(!is.na(hi) & actual > hi, hi, NA), below = ifelse(!is.na(lo) & actual < lo, lo, NA))
+    up <- gap_shapes(b$time, b$above, b$actual)
+    dn <- gap_shapes(b$time, b$below, b$actual)
+    days <- b |> group_by(date) |>
+      summarise(up = sum(!is.na(above)), dn = -sum(!is.na(below)), .groups = "drop") |>
+      mutate(time = as_datetime(date, tz = "Europe/Copenhagen") + hours(12))
     p2 <- p2 |>
-      add_lines(y = sc[[m]], name = model_labels[[m]],
-                visible = (m == models[1]),
-                line = list(color = model_colors[[m]], width = 1.5),
+      add_lines(data = b, x = ~time, y = ~lo, line = list(width = 0), showlegend = FALSE, visible = vis,
+                hoverinfo = "skip") |>
+      add_lines(data = b, x = ~time, y = ~hi, line = list(width = 0), fill = "tonexty",
+                fillcolor = "rgba(107,114,128,0.12)", name = "90% range", visible = vis, hoverinfo = "skip") |>
+      add_polygons(data = up, x = ~time, y = ~y, fillcolor = "rgba(220,38,38,0.45)", line = list(width = 0),
+                   name = "Above the range", visible = vis, hoverinfo = "skip") |>
+      add_polygons(data = dn, x = ~time, y = ~y, fillcolor = "rgba(14,165,233,0.45)", line = list(width = 0),
+                   name = "Below the range", visible = vis, hoverinfo = "skip") |>
+      add_bars(data = days, x = ~time, y = ~up, yaxis = "y2", width = bar_w, marker = list(color = "#dc2626"),
+               showlegend = FALSE, visible = vis, hovertemplate = "%{y} hours above<extra></extra>") |>
+      add_bars(data = days, x = ~time, y = ~dn, yaxis = "y2", width = bar_w, marker = list(color = "#0ea5e9"),
+               showlegend = FALSE, visible = vis, hovertemplate = "%{customdata} hours below<extra></extra>",
+               customdata = ~-dn) |>
+      add_lines(data = b, x = ~time, y = ~f, name = model_labels[[m]], visible = vis,
+                line = list(color = col, width = 1.5),
                 hovertemplate = paste0("%{y:.1f} €/MWh<extra>", model_labels[[m]], "</extra>"))
   }
 
-  p2 |> chart_layout(models)
+  p2 |> chart_layout(models, per_model = 7) |>
+    layout(yaxis = list(domain = c(0.3, 1)), barmode = "relative",
+           yaxis2 = list(domain = c(0, 0.22), anchor = "x", title = list(text = "Hours outside", font = list(size = 11)),
+                         color = grey, gridcolor = "#f1ebe4", zerolinecolor = "#cfc6bb"))
 }
 ```
 

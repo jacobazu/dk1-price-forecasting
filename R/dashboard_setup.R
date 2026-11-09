@@ -343,13 +343,16 @@ past_fc <- function(m) {
     select(date, hour, f = all_of(m)) |> inner_join(actual, by = c("date", "hour")) else NULL
   bind_rows(lv, bt) |> distinct(date, hour, .keep_all = TRUE)
 }
+bands <- list()   # each past day's 5% and 95% offsets, for the misses on the track record
 fans <- lapply(setNames(models, models), \(m) {
   if (m == "naive_mix" || !m %in% names(tomorrow) || all(is.na(tomorrow[[m]]))) return(NULL)
   x  <- bind_rows(transmute(past_fc(m), date, hour, e = actual - f),
                   tibble(date = latest, hour = 0:23, e = NA_real_))
   em <- err_matrix(x)
-  q  <- quantile_offsets(em$dates, em$E, vol_scale(all_prices, em$dates)$s) |>
-    filter(date == latest, method == q_method(m))
+  q_all <- quantile_offsets(em$dates, em$E, vol_scale(all_prices, em$dates)$s) |> filter(method == q_method(m))
+  bands[[m]] <<- q_all |> filter(tau %in% c(0.05, 0.95), date < latest) |>
+    tidyr::pivot_wider(id_cols = c(date, hour), names_from = tau, values_from = off, names_prefix = "o")
+  q  <- q_all |> filter(date == latest)
   if (nrow(q) == 0) return(NULL)
   tomorrow |> select(hour, f = all_of(m)) |> inner_join(q, by = "hour") |> mutate(q = f + off)
 })
