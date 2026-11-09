@@ -384,6 +384,30 @@ neg_val <- if (is.null(neg)) "\u2013" else neg_pct(max(neg$p))
 neg_sub <- if (is.null(neg)) "no range yet" else if (max(neg$p) <= 0) "below 5% in every hour" else
   sprintf("highest hourly chance, at %s", hour_label(neg$hour[which.max(neg$p)]))
 
+# tomorrow's risk in plain words, and how yesterday went
+fw <- fan_wide(main) |> filter(hour %in% tile_fc$hour)
+risk_line <- if (all(is.na(fw$q0.05))) "" else {
+  width <- mean(fw$q0.95 - fw$q0.05)
+  past  <- if (!is.null(bands[[main]])) bands[[main]] |> group_by(date) |>
+    summarise(w = mean(o0.95 - o0.05), .groups = "drop") |> filter(date >= latest - 60) |> pull(w) else numeric(0)
+  kind <- if (length(past) < 20) "" else if (width > quantile(past, 0.75)) "<span class='risk-kind risky'>A risky day:</span> the range is wider than usual. " else
+    if (width < quantile(past, 0.25)) "<span class='risk-kind calm'>A calm day:</span> the range is narrower than usual. " else "<span class='risk-kind'>A normal day.</span> "
+  neg_part <- if (is.null(neg) || max(neg$p) <= 0) "" else
+    sprintf(" Chance of a negative price in the riskiest hour: %s in 100.", round(100 * max(neg$p)))
+  sprintf("%s%s: we expect about %s €/MWh on average. In a typical hour the price lands between %s and %s, 9 times in 10.%s",
+          kind, format(latest, "%a %d %b"), eur(mean(tile_fc[[main]])), eur(mean(fw$q0.05)), eur(mean(fw$q0.95)), neg_part)
+}
+yest <- scored_all |> filter(date == latest - 1) |> select(date, hour, actual, f = all_of(main))
+yest <- if (!is.null(bands[[main]])) left_join(yest, bands[[main]], by = c("date", "hour")) |> filter(!is.na(o0.05)) else yest[0, ]
+yest_line <- if (nrow(yest) == 0) "" else {
+  inside <- sum(yest$actual >= yest$f + yest$o0.05 & yest$actual <= yest$f + yest$o0.95)
+  above  <- sum(yest$actual > yest$f + yest$o0.95)
+  sprintf("Yesterday (%s): the price stayed inside the 90%% range in %d of %d hours%s. Average error %s €/MWh.",
+          format(latest - 1, "%a %d %b"), inside, nrow(yest),
+          if (inside == nrow(yest)) "" else sprintf(" (%d above, %d below)", above, nrow(yest) - inside - above),
+          eur(mean(abs(yest$actual - yest$f))))
+}
+
 # range text and tables
 q_lab   <- function(m) q_methods[[m]]
 q_low   <- function(m) paste0(tolower(substring(q_lab(m), 1, 1)), substring(q_lab(m), 2))

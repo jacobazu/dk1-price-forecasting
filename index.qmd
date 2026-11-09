@@ -29,6 +29,12 @@ source("R/dashboard_setup.R", local = knitr::knit_global())
 
 # Forecast
 
+## Row {height=10%}
+
+::: {.card}
+<div class="risk-line">`r risk_line`<br><span class="risk-check">`r yest_line`</span></div>
+:::
+
 ## Row {height=14%}
 
 ::: {.card}
@@ -75,7 +81,7 @@ source("R/dashboard_setup.R", local = knitr::knit_global())
 </div>
 :::
 
-## Row {height=86%}
+## Row {height=76%}
 
 ```{r}
 #| title: "Forecast for the next delivery day, with recent actual prices (EUR/MWh)"
