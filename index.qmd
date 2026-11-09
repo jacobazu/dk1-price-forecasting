@@ -255,7 +255,9 @@ acc_live <- bind_rows(lapply(models, \(m) {
   tibble(Model            = model_labels[[m]],
          `Days tracked`   = n_distinct(s$date),
          `MAE (€/MWh)`    = mean(abs(s$actual - s[[m]])),
-         `RMSE (€/MWh)`   = sqrt(mean((s$actual - s[[m]])^2)))
+         `RMSE (€/MWh)`   = sqrt(mean((s$actual - s[[m]])^2)),
+         `Bias (€/MWh)`   = mean(s$actual - s[[m]]),
+         `MAE, % of price` = 100 * mean(abs(s$actual - s[[m]])) / mean(abs(s$actual)))
 }))
 if (nrow(acc_live) > 0) {
   acc_live |> arrange(`MAE (€/MWh)`) |> knitr::kable(digits = 1)
@@ -267,6 +269,10 @@ if (nrow(acc_live) > 0) {
 ::: {.card}
 Every forecast was saved before the auction and never changed. With few live days, small differences say
 little yet. The [backtest](backtest.html) has `r eval_acc$n_backtest_days[1]` days.
+
+Bias: actual minus forecast, so a positive number means the forecast was too low. The error in euro is larger
+live than in the backtest because prices are higher now (`r sprintf("%.0f", mean(scored$actual, na.rm = TRUE))` €/MWh
+on average over these days); the error as a share of the price is the fairer comparison.
 :::
 
 # Method {scrolling="true"}
