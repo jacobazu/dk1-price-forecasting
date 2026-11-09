@@ -574,3 +574,29 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 </script>', format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")), "stale.html")
+
+# summary for the desk page (jacobazu.github.io/desk), which pulls every project into one book
+desk_30 <- scored_all |> filter(date >= latest - 30) |> transmute(actual, f = .data[[main]], naive = naive_mix)
+desk_tr <- trust(main)
+desk_top <- (fan_wide(main) |> filter(hour %in% tile_fc$hour) |> mutate(w = q0.95 - q0.05) |> arrange(desc(w)))[1, ]
+desk_bias <- mean(desk_30$actual - desk_30$f)
+desk_skill <- 1 - mean(abs(desk_30$actual - desk_30$f)) / mean(abs(desk_30$actual - desk_30$naive), na.rm = TRUE)
+desk <- list(
+  name = "Day-ahead price forecast", url = "https://jacobazu.github.io/dk1-price-forecasting/",
+  updated = format(Sys.time(), "%Y-%m-%dT%H:%MZ", tz = "UTC"),
+  status = list(ok = latest >= as_date(with_tz(Sys.time(), "Europe/Copenhagen")), text = paste("Forecast for", format(latest, "%a %d %b"), "made", format(made_dk, "%a %H:%M"))),
+  forecast = list(date = format(latest), mean = round(mean(tile_fc[[main]])),
+                  uncertain_hour = if (is.na(desk_top$w)) NULL else sprintf("%02d:00", desk_top$hour),
+                  lo = if (is.na(desk_top$w)) NULL else round(desk_top$q0.05), hi = if (is.na(desk_top$w)) NULL else round(desk_top$q0.95)),
+  tomorrow = NULL, pnl = NULL,
+  checks = list(
+    if (!is.null(desk_tr)) list(name = "Price inside the 90% range", value = sprintf("%.0f%%", 100 * desk_tr$share), target = "90%",
+         light = if (abs(desk_tr$share - 0.9) <= 0.03) "green" else if (abs(desk_tr$share - 0.9) <= 0.06) "amber" else "red",
+         detail = paste("last", desk_tr$days, "live days")),
+    list(name = "Forecast bias", value = sprintf("%+.0f €/MWh", desk_bias), target = "0",
+         light = if (abs(desk_bias) <= 5) "green" else if (abs(desk_bias) <= 12) "amber" else "red",
+         detail = if (desk_bias > 0) "forecast too low on average, last 30 days" else "forecast too high on average, last 30 days"),
+    list(name = "Error against the naive forecast", value = sprintf("%.0f%% lower", 100 * desk_skill), target = "backtest 51% lower",
+         light = if (desk_skill >= 0.4) "green" else if (desk_skill >= 0.2) "amber" else "red", detail = "last 30 days")))
+desk$checks <- Filter(Negate(is.null), desk$checks)
+jsonlite::write_json(desk, "desk.json", auto_unbox = TRUE, null = "null")
