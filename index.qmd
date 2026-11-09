@@ -108,7 +108,7 @@ fc_models <- c(main, setdiff(fc_models, main))   # open on main model
 
 for (m in fc_models) {
   d <- tomorrow |> select(hour, f = all_of(m)) |> left_join(fan_wide(m), by = "hour") |>
-    mutate(range90 = ifelse(is.na(q0.05), "", sprintf("<br>9 in 10: %.0f to %.0f<br>half the time: %.0f to %.0f",
+    mutate(range90 = ifelse(is.na(q0.05), "", sprintf(" · 9 in 10: %.0f–%.0f · half the time: %.0f–%.0f",
                                                        q0.05, q0.95, q0.25, q0.75)))
   col <- model_colors[[m]]
   vis <- m == fc_models[1]
@@ -118,7 +118,8 @@ for (m in fc_models) {
     add_lines(data = d, x = ~hour, y = ~q0.95, line = list(width = 0), fill = "tonexty",
               fillcolor = rgba(col, 0.07), name = paste0("90% range, ", q_low(q_method(m))),
               visible = vis, hoverinfo = "skip") |>
-    add_polygons(data = violin_xy(m), x = ~x, y = ~y, fillcolor = rgba(col, 0.30),
+    # on a hidden second x axis, so the shapes don't take over the hover box
+    add_polygons(data = violin_xy(m), x = ~x, y = ~y, xaxis = "x2", fillcolor = rgba(col, 0.30),
                  line = list(color = rgba(col, 0.6), width = 0.8), name = "Where each hour could land",
                  visible = vis, hoverinfo = "skip") |>
     add_lines(data = d, x = ~hour, y = ~f, line = list(width = 0), showlegend = FALSE,
@@ -128,10 +129,12 @@ for (m in fc_models) {
                             ", made ", format(made_dk, "%a %d %b %H:%M")),
               visible = vis,
               line = list(color = col, width = 3),
-              hovertemplate = paste0("%{y:.1f} €/MWh%{text}<extra>", model_labels[[m]], "</extra>"))
+              hovertemplate = paste0("%{y:.0f} €/MWh%{text}<extra>", model_labels[[m]], "</extra>"))
 }
 
-p |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_model = 5) |> layout(xaxis = list(dtick = 3))
+p |> skip_hover() |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_model = 5) |>
+  layout(xaxis = list(dtick = 3, range = c(-0.6, 23.6)),
+         xaxis2 = list(overlaying = "x", matches = "x", visible = FALSE))
 ```
 
 # Track record

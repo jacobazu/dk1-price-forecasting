@@ -106,6 +106,17 @@ model_buttons <- function(p, models, n_fixed = 1, per_model = 1) {
     data = list(labels = c(unname(model_labels[models]), "All"), keys = c(models, "all"), visible = vis))
 }
 
+# plotly for r writes hoverinfo "skip" once per point, which leaves empty rows in the hover box.
+# one value per trace keeps those traces out of it
+skip_hover <- function(p) {
+  p <- plotly_build(p)
+  for (i in seq_along(p$x$data)) {
+    h <- unique(na.omit(unlist(p$x$data[[i]]$hoverinfo)))
+    if (length(h) == 1 && h == "skip") p$x$data[[i]]$hoverinfo <- "skip"
+  }
+  p
+}
+
 chart_layout <- function(p, models = NULL, xtitle = "", n_fixed = 1, per_model = 1) {
   p <- p |>
     layout(paper_bgcolor = "rgba(0,0,0,0)",
