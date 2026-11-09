@@ -32,7 +32,14 @@ source("R/dashboard_setup.R", local = knitr::knit_global())
 ## Row {height=10%}
 
 ::: {.card}
-<div class="risk-line">`r risk_line`<br><span class="risk-check">`r yest_line`</span></div>
+<div class="risk-line">`r risk_html`</div>
+<script>
+document.addEventListener('modelchange', function(e) {
+  var m = e.detail, spans = document.querySelectorAll('.risk-m'), hit = false;
+  spans.forEach(function(s) { if (s.dataset.m === m) hit = true; });
+  spans.forEach(function(s, i) { s.style.display = (hit ? s.dataset.m === m : i === 0) ? '' : 'none'; });
+});
+</script>
 :::
 
 ## Row {height=14%}
@@ -101,19 +108,20 @@ fc_models <- c(main, setdiff(fc_models, main))   # open on main model
 
 for (m in fc_models) {
   d <- tomorrow |> select(hour, f = all_of(m)) |> left_join(fan_wide(m), by = "hour") |>
-    mutate(range90 = ifelse(is.na(q0.05), "", sprintf(", 90%%: %.0f to %.0f", q0.05, q0.95)))
+    mutate(range90 = ifelse(is.na(q0.05), "", sprintf("<br>9 in 10: %.0f to %.0f<br>half the time: %.0f to %.0f",
+                                                       q0.05, q0.95, q0.25, q0.75)))
   col <- model_colors[[m]]
   vis <- m == fc_models[1]
   p <- p |>
     add_lines(data = d, x = ~hour, y = ~q0.05, line = list(width = 0), showlegend = FALSE,
               visible = vis, hoverinfo = "skip") |>
     add_lines(data = d, x = ~hour, y = ~q0.95, line = list(width = 0), fill = "tonexty",
-              fillcolor = rgba(col, 0.12), name = paste0("90% range, ", q_low(q_method(m))),
+              fillcolor = rgba(col, 0.07), name = paste0("90% range, ", q_low(q_method(m))),
               visible = vis, hoverinfo = "skip") |>
-    add_lines(data = d, x = ~hour, y = ~q0.25, line = list(width = 0), showlegend = FALSE,
-              visible = vis, hoverinfo = "skip") |>
-    add_lines(data = d, x = ~hour, y = ~q0.75, line = list(width = 0), fill = "tonexty",
-              fillcolor = rgba(col, 0.25), name = "50% range",
+    add_polygons(data = violin_xy(m), x = ~x, y = ~y, fillcolor = rgba(col, 0.30),
+                 line = list(color = rgba(col, 0.6), width = 0.8), name = "Where each hour could land",
+                 visible = vis, hoverinfo = "skip") |>
+    add_lines(data = d, x = ~hour, y = ~f, line = list(width = 0), showlegend = FALSE,
               visible = vis, hoverinfo = "skip") |>
     add_lines(data = d, x = ~hour, y = ~f, text = ~range90,
               name = paste0(model_labels[[m]], " forecast ", format(latest, "%a %d %b"),

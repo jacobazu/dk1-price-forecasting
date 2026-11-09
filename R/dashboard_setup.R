@@ -95,6 +95,7 @@ model_buttons <- function(p, models, n_fixed = 1, per_model = 1) {
         if (i === 0) b.className = 'active';
         b.onclick = function() {
           Plotly.restyle(el, {visible: data.visible[i]});
+          document.dispatchEvent(new CustomEvent('modelchange', {detail: data.keys[i]}));
           bar.querySelectorAll('button').forEach(function(o) { o.className = ''; });
           b.className = 'active';
         };
@@ -102,7 +103,7 @@ model_buttons <- function(p, models, n_fixed = 1, per_model = 1) {
       });
       el.appendChild(bar);
     }",
-    data = list(labels = c(unname(model_labels[models]), "All"), visible = vis))
+    data = list(labels = c(unname(model_labels[models]), "All"), keys = c(models, "all"), visible = vis))
 }
 
 chart_layout <- function(p, models = NULL, xtitle = "", n_fixed = 1, per_model = 1) {
@@ -386,27 +387,50 @@ neg_sub <- if (is.null(neg)) "no range yet" else if (max(neg$p) <= 0) "below 5% 
 
 # tomorrow's risk in plain words, and how yesterday went
 fw <- fan_wide(main) |> filter(hour %in% tile_fc$hour)
-risk_line <- if (all(is.na(fw$q0.05))) "" else {
-  width <- mean(fw$q0.95 - fw$q0.05)
-  past  <- if (!is.null(bands[[main]])) bands[[main]] |> group_by(date) |>
-    summarise(w = mean(o0.95 - o0.05), .groups = "drop") |> filter(date >= latest - 60) |> pull(w) else numeric(0)
-  kind <- if (length(past) < 20) "" else if (width > quantile(past, 0.75)) "<span class='risk-kind risky'>A risky day:</span> the range is wider than usual. " else
-    if (width < quantile(past, 0.25)) "<span class='risk-kind calm'>A calm day:</span> the range is narrower than usual. " else "<span class='risk-kind'>A normal day.</span> "
-  neg_part <- if (is.null(neg) || max(neg$p) <= 0) "" else
-    sprintf(" Chance of a negative price in the riskiest hour: %s in 100.", round(100 * max(neg$p)))
-  sprintf("%s%s: we expect about %s €/MWh on average. In a typical hour the price lands between %s and %s, 9 times in 10.%s",
-          kind, format(latest, "%a %d %b"), eur(mean(tile_fc[[main]])), eur(mean(fw$q0.05)), eur(mean(fw$q0.95)), neg_part)
+# risk changes from hour to hour, so the line names the most uncertain hour rather than labelling the day.
+# one line per model; the model buttons on the forecast chart switch between them
+risk_text <- function(m) {
+  f <- fan_wide(m) |> filter(hour %in% tile_fc$hour)
+  if (all(is.na(f$q0.05))) return(sprintf("%s: about %s €/MWh on average.", model_labels[[m]], eur(mean(tile_fc[[m]]))))
+  top <- (f |> mutate(width = q0.95 - q0.05) |> arrange(desc(width)))[1, ]
+  ng <- fans[[m]] |> filter(!is.na(q), hour %in% tile_fc$hour) |> group_by(hour) |>
+    summarise(p = prob_below(q[order(q)], tau[order(q)]), .groups = "drop")
+  neg_part <- if (nrow(ng) == 0 || max(ng$p) <= 0) "" else
+    sprintf(" Chance of a negative price: up to %s in 100, at %02d:00.", round(100 * max(ng$p)), ng$hour[which.max(ng$p)])
+  sprintf("%s: about %s €/MWh on average. Most uncertain at %02d:00, where 9 days in 10 land between %s and %s.%s",
+          model_labels[[m]], eur(mean(tile_fc[[m]])), top$hour, eur(top$q0.05), eur(top$q0.95), neg_part)
 }
-yest <- scored_all |> filter(date == latest - 1) |> select(date, hour, actual, f = all_of(main))
-yest <- if (!is.null(bands[[main]])) left_join(yest, bands[[main]], by = c("date", "hour")) |> filter(!is.na(o0.05)) else yest[0, ]
-yest_line <- if (nrow(yest) == 0) "" else {
-  inside <- sum(yest$actual >= yest$f + yest$o0.05 & yest$actual <= yest$f + yest$o0.95)
-  above  <- sum(yest$actual > yest$f + yest$o0.95)
-  sprintf("Yesterday (%s): the price stayed inside the 90%% range in %d of %d hours%s. Average error %s €/MWh.",
-          format(latest - 1, "%a %d %b"), inside, nrow(yest),
-          if (inside == nrow(yest)) "" else sprintf(" (%d above, %d below)", above, nrow(yest) - inside - above),
-          eur(mean(abs(yest$actual - yest$f))))
+
+# each hour's spread of outcomes as a sideways density, smoothed from its 5%, 10%, ..., 95% quantiles.
+# each hour gets the same width, so a tall shape is an uncertain hour
+violin_xy <- function(m, width = 0.36) {
+  if (is.null(fans[[m]])) return(tibble(x = NA_real_, y = NA_real_))
+  bind_rows(lapply(split(fans[[m]], fans[[m]]$hour), \(x) {
+    x <- x[order(x$tau), ]
+    draws <- approx(x$tau, cummax(x$q), xout = seq(0.05, 0.95, length.out = 300))$y
+    d <- density(draws, adjust = 1.6, from = min(draws), to = max(draws), n = 80)
+    w <- d$y / max(d$y) * width
+    h <- x$hour[1]
+    tibble(x = c(h + w, rev(h - w), NA), y = c(d$x, rev(d$x), NA))
+  }))
 }
+
+yest_text <- function(m) {
+  y <- scored_all |> filter(date == latest - 1) |> select(date, hour, actual, f = all_of(m))
+  y <- if (!is.null(bands[[m]])) left_join(y, bands[[m]], by = c("date", "hour")) |> filter(!is.na(o0.05)) else y[0, ]
+  if (nrow(y) == 0) return("")
+  inside <- sum(y$actual >= y$f + y$o0.05 & y$actual <= y$f + y$o0.95)
+  above  <- sum(y$actual > y$f + y$o0.95)
+  sprintf("Yesterday (%s): inside the 90%% range in %d of %d hours%s. Average error %s €/MWh.",
+          format(latest - 1, "%a %d %b"), inside, nrow(y),
+          if (inside == nrow(y)) "" else sprintf(" (%d above, %d below)", above, nrow(y) - inside - above),
+          eur(mean(abs(y$actual - y$f))))
+}
+line_models <- c(main, setdiff(setdiff(models, "naive_mix"), main))
+risk_html <- paste0(vapply(line_models, \(m) sprintf("<span class='risk-m' data-m='%s'%s>%s<br><span class='risk-check'>%s</span></span>", m,
+                                                     if (m == main) "" else " style='display:none'", risk_text(m),
+                                                     yest_text(m)), ""),
+                    collapse = "")
 
 # range text and tables
 q_lab   <- function(m) q_methods[[m]]
