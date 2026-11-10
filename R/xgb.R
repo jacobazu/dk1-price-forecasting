@@ -62,7 +62,10 @@ xgb_design <- function(features, rows, exog = NULL) {
       m
     }))
   }
-  cbind(X, nb, wx, wxde,
+  # gas and co2, one value per day
+  fuel <- if (!is.null(exog$fuel)) apply(exog$fuel[rows, , drop = FALSE], 2, rep24) else NULL
+  if (!is.null(fuel) && length(rows) == 1) fuel <- matrix(fuel, ncol = ncol(exog$fuel), dimnames = list(NULL, colnames(exog$fuel)))
+  cbind(X, nb, wx, wxde, fuel,
         hol_d0 = rep24(exog$hol[rows, "hol_d0"]),
         hol_d1 = rep24(exog$hol[rows, "hol_d1"]))
 }
