@@ -121,7 +121,7 @@ for (m in fc_models) {
                  line = list(color = dcol[i], width = 1.6), showlegend = FALSE, visible = vis, hoverinfo = "skip")
   p <- p |>
     add_text(data = lab, x = ~x, y = ~y, text = ~txt, xaxis = "x2", textposition = "top right",
-             textfont = list(color = lab$col, size = 11), showlegend = FALSE, visible = vis, hoverinfo = "skip") |>
+             textfont = list(color = ink, size = 11), showlegend = FALSE, visible = vis, hoverinfo = "skip") |>
     add_lines(data = d, x = ~hour, y = ~f, text = ~range90,
               name = paste(model_labels[[m]], format(latest, "%a %d %b")), visible = vis,
               line = list(color = ink, width = 2.6, shape = "hvh"),
