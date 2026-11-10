@@ -90,6 +90,9 @@ def tabpfn_days(D, days, out, model=None, window=365):
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":   # keep the pc awake while this runs
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
     kind, data, out = sys.argv[1:4]
     D = load(data)
     out = Path(out) / kind

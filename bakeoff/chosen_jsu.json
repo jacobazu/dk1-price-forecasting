@@ -1,0 +1,14 @@
+{
+ "epochs": 300,
+ "patience": 20,
+ "update_epochs": 15,
+ "seeds": 3,
+ "hidden": [
+  512,
+  256
+ ],
+ "drop": 0.3,
+ "lr": 0.001,
+ "wd": 0.01,
+ "batch": 128
+}

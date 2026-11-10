@@ -1,3 +1,5 @@
 __pycache__/
 tune_*.csv
 tune_*.db
+.venv/
+run_log.txt
