@@ -75,6 +75,16 @@ make_exog <- function(dates, neighbours, holidays) {
   list(nb = nb, hol = hol)
 }
 
+# gas (eex spot index) and co2 (eua auction), the last value known two days before delivery
+make_fuel <- function(dates, gas, co2) {
+  last_known <- function(x, col) {
+    x <- x[order(x$day), ]
+    i <- findInterval(as.numeric(dates - 2), as.numeric(x$day))
+    ifelse(i > 0, x[[col]][pmax(i, 1)], NA_real_)
+  }
+  cbind(gas_d2 = last_known(gas, "gas"), co2_d2 = last_known(co2, "co2"))
+}
+
 # transform on training window
 transform_exog <- function(exog, train) {
   block <- function(X, f) {
@@ -92,6 +102,7 @@ transform_exog <- function(exog, train) {
       asinh((x - median(tr, na.rm = TRUE)) / s)
     }),
     hol   = exog$hol,
+    fuel  = block(exog$fuel, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
     wx    = block(exog$wx, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE)),
     wxde  = block(exog$wxde, \(x, tr) (x - mean(tr, na.rm = TRUE)) / sd(tr, na.rm = TRUE))
   )
