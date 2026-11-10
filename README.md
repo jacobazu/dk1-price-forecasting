@@ -10,10 +10,6 @@ Methods: [one page (PDF)](notes/method.pdf)
 
 A backtest shows that a method would have worked. It doesn't show that it works. I made my choices with the backtest period in view, so the backtest is probably a bit too good. The live forecasts are saved before the prices are known, so they can't be adjusted afterwards. That's the interesting part, so the dashboard's main page only shows the live forecasts and their track record. The backtest has its own page.
 
----
-
-# The forecast
-
 ## Models
 
 Four forecasts are made every morning and compared:
@@ -52,13 +48,10 @@ Tried and dropped: Energinet's wind and solar forecasts (published after the auc
 
 - The ensemble beats each single model (Diebold-Mariano with Newey-West, p < 0.001).
 - Weather forecasts for Germany cut the MAE from 19.0 to 17.0 (p < 0.001). Used from the forecast for 14 Oct 2026.
-- The forecasts run about 6 €/MWh too low. A bias correction (MAE 17.0 to 16.3, p = 0.02) runs live as a challenger. It replaces the ensemble on 1 Mar 2027 only if its live MAE is lower with p < 0.05.
-- Battery revenue at risk: of four methods only EWMA-filtered historical simulation passes the Kupiec, Christoffersen and Acerbi–Székely tests, and only just.
+- The forecasts run about 6 €/MWh too low. Most of it follows the gas price, which the models didn't see. With the gas price as an input the MAE drops from 17.0 to 16.4 (p = 0.002), and with a bias correction on top to 16.2. Both run live as challengers next to the ensemble. One replaces it on 1 Mar 2027 only if its live MAE is lower with p < 0.05.
+- Battery revenue at risk: of four methods only EWMA-filtered historical simulation passes the Kupiec, Christoffersen and Acerbi-Székely tests, and only just.
 
 The backtest page has the rest: ranges, the chance of a negative price and the battery backtest.
-
----
-
 
 ## License
 

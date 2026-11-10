@@ -336,7 +336,7 @@ risk_txt <- if (has_risk) {
   u <- risk_u
   if (u$calibrated) {
     sprintf(paste("Used: %s. Below the floor on %s of %d days (Kupiec %s). The misses don't cluster (Christoffersen %s)",
-                  "and aren't worse than the ES says (Acerbi–Székely %s)."),
+                  "and aren't worse than the ES says (Acerbi-Székely %s)."),
             low1(u$label), pct(u$miss_rate), u$days, p_txt(u$kupiec_p), p_txt(u$christoffersen_p), p_txt(u$z2_p))
   } else {
     sprintf("No method passes all three tests, so %s is shown, with the lowest FZ0 score.", low1(u$label))

@@ -100,7 +100,7 @@ fc_models <- c(main, setdiff(fc_models, main))   # open on main model
 
 for (m in fc_models) {
   d <- tomorrow |> select(hour, f = all_of(m)) |> left_join(fan_wide(m), by = "hour") |>
-    mutate(range90 = ifelse(is.na(q0.05), "", sprintf(" · 9 in 10: %.0f–%.0f · half the time: %.0f–%.0f",
+    mutate(range90 = ifelse(is.na(q0.05), "", sprintf(" · 9 in 10: %.0f to %.0f · half the time: %.0f to %.0f",
                                                        q0.05, q0.95, q0.25, q0.75)))
   col <- model_colors[[m]]
   vis <- m == fc_models[1]
@@ -110,7 +110,7 @@ for (m in fc_models) {
   dcol <- if (is.null(k)) rep("#999999", 3) else c(k$col, rep("#999999", 3))[1:3]
   lab  <- if (is.null(k)) tibble(x = NA_real_, y = NA_real_, txt = "", col = "#999999") else
     tibble(x = k$hour + 0.6, y = k$q0.95, col = k$col,
-           txt = sprintf("<b>%s, %02d:00</b><br>%.0f €/MWh<br>9 in 10: %.0f–%.0f", k$what, k$hour, k$f, k$q0.05, k$q0.95))
+           txt = sprintf("<b>%s, %02d:00</b><br>%.0f €/MWh<br>9 in 10: %.0f to %.0f", k$what, k$hour, k$f, k$q0.05, k$q0.95))
   p <- p |>
     add_polygons(data = band_xy(m, "q0.05", "q0.95"), x = ~x, y = ~y, xaxis = "x2", fillcolor = "rgba(31,35,40,0.07)",
                  line = list(width = 0), name = "9 in 10 days inside", visible = vis, hoverinfo = "skip") |>
@@ -357,7 +357,7 @@ dropped <- inputs_reg[grepl("^dropped", inputs_reg$status), ]
 cat("\n\nTried and dropped: ", paste0(dropped$input, " (", sub("^dropped: ", "", dropped$status), ")", collapse = "; "), ".\n", sep = "")
 ```
 
-**Ranges.** 5–95% quantiles from each model's recent errors. The chance of a negative price comes from the same quantiles.
+**Ranges.** 5% and 95% quantiles from each model's recent errors. The chance of a negative price comes from the same quantiles.
 
 **Challengers.** Changes run live next to the ensemble and only replace it if they win on a rule set in advance. Prices rose with gas in autumn 2026, and the models, trained on two years of cheaper gas, came in too low. Since 11 Nov a gas correction runs, and since 12 Nov the same three models with the gas price as an input. In the backtest, gas inside the models cut the ensemble's error by 3.3% (p = 0.002) and its bias from 6.0 to 3.9 €/MWh; a 28-day bias correction on top took the rest.
 

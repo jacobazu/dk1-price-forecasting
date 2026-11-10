@@ -266,7 +266,7 @@ if (has_risk) {
               `Days below the floor`        = sprintf("%s (%d of %d)", pct(miss_rate), misses, days),
               `Kupiec p`                    = p_tab(kupiec_p),
               `Christoffersen p`            = ifelse(is.na(christoffersen_p), "\u2013", p_tab(christoffersen_p)),
-              `Acerbi–Székely p`            = p_tab(z2_p),
+              `Acerbi-Székely p`            = p_tab(z2_p),
               `FZ0 score`                   = format(round(fz0, 2), nsmall = 2),
               `DM p vs best`                = ifelse(is.na(dm_p), "best", p_tab(dm_p)),
               `VaR / ES (€)`                = paste(sapply(var, eur), "/", sapply(es, eur)),
@@ -281,7 +281,7 @@ if (has_risk) {
 
 Past days' errors run through the day's plan in four ways: as they were, scaled by last week's volatility, a
 normal distribution, and scaled by an EWMA. Rule set before running: pass Kupiec, Christoffersen and
-Acerbi–Székely at 5%, then the lowest FZ0 score. EWMA was added after the first three failed, so the live days
+Acerbi-Székely at 5%, then the lowest FZ0 score. EWMA was added after the first three failed, so the live days
 are its real test.
 
 `r risk_txt`
