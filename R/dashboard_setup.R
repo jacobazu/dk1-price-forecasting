@@ -425,18 +425,6 @@ neg_sub <- if (is.null(neg)) "no range yet" else if (max(neg$p) <= 0) "below 5% 
 fw <- fan_wide(main) |> filter(hour %in% tile_fc$hour)
 # risk changes from hour to hour, so the line names the most uncertain hour rather than labelling the day.
 # one line per model; the model buttons on the forecast chart switch between them
-risk_text <- function(m) {
-  f <- fan_wide(m) |> filter(hour %in% tile_fc$hour)
-  if (all(is.na(f$q0.05))) return(sprintf("%s: about %s €/MWh on average.", model_labels[[m]], eur(mean(tile_fc[[m]]))))
-  top <- (f |> mutate(width = q0.95 - q0.05) |> arrange(desc(width)))[1, ]
-  ng <- fans[[m]] |> filter(!is.na(q), hour %in% tile_fc$hour) |> group_by(hour) |>
-    summarise(p = prob_below(q[order(q)], tau[order(q)]), .groups = "drop")
-  neg_part <- if (nrow(ng) == 0 || max(ng$p) <= 0) "" else
-    sprintf(" Chance of a negative price: up to %s in 100, at %02d:00.", round(100 * max(ng$p)), ng$hour[which.max(ng$p)])
-  sprintf("%s: about %s €/MWh on average. Most uncertain at %02d:00, where 9 days in 10 land between %s and %s.%s",
-          model_labels[[m]], eur(mean(tile_fc[[m]])), top$hour, eur(top$q0.05), eur(top$q0.95), neg_part)
-}
-
 # each hour's spread of outcomes as a sideways density, smoothed from its 5%, 10%, ..., 95% quantiles.
 # each hour gets the same width, so a tall shape is an uncertain hour
 violin_xy <- function(m, width = 0.36) {
@@ -451,28 +439,39 @@ violin_xy <- function(m, width = 0.36) {
   }))
 }
 
-yest_text <- function(m) {
-  y <- scored_all |> filter(date == latest - 1) |> select(date, hour, actual, f = all_of(m))
-  y <- if (!is.null(bands[[m]])) left_join(y, bands[[m]], by = c("date", "hour")) |> filter(!is.na(o0.05)) else y[0, ]
-  if (nrow(y) == 0) return("")
-  inside <- sum(y$actual >= y$f + y$o0.05 & y$actual <= y$f + y$o0.95)
-  above  <- sum(y$actual > y$f + y$o0.95)
-  tr <- trust(m)
-  badge <- if (is.null(tr)) "" else {
-    gap <- abs(tr$share - 0.9)
-    sprintf(" <span class='trust %s'>Last %d days: inside the 90%% range %s of the time</span>",
-            if (gap <= 0.03) "ok" else if (gap <= 0.06) "warn" else "bad", tr$days, sprintf("%.0f%%", 100 * tr$share))
-  }
-  sprintf("Yesterday (%s): inside the 90%% range in %d of %d hours%s.%s",
-          format(latest - 1, "%a %d %b"), inside, nrow(y),
-          if (inside == nrow(y)) "" else sprintf(" (%d above, %d below)", above, nrow(y) - inside - above),
-          badge)
-}
 line_models <- c(main, setdiff(setdiff(models, "naive_mix"), main))
-risk_html <- paste0(vapply(line_models, \(m) sprintf("<span class='risk-m' data-m='%s'%s>%s<br><span class='risk-check'>%s</span></span>", m,
-                                                     if (m == main) "" else " style='display:none'", risk_text(m),
-                                                     yest_text(m)), ""),
-                    collapse = "")
+
+# each of the last 30 days: how many hours landed inside the 90% range, above it, below it
+day_hits <- function(m) {
+  if (is.null(bands[[m]])) return(NULL)
+  b <- scored_all |> select(date, hour, actual, f = all_of(m)) |> filter(date >= latest - 30) |>
+    inner_join(bands[[m]], by = c("date", "hour")) |> filter(!is.na(o0.05), !is.na(actual))
+  if (nrow(b) == 0) return(NULL)
+  b |> group_by(date) |> summarise(n = n(), inside = sum(actual >= f + o0.05 & actual <= f + o0.95),
+                                   above = sum(actual > f + o0.95), .groups = "drop") |>
+    mutate(below = n - inside - above)
+}
+hit_col <- function(s) ifelse(s >= 0.9, "#16a34a", ifelse(s >= 0.75, "#f59e0b", "#dc2626"))
+
+# one square per day, coloured by the share of hours inside the range; a bar with a tick at the 90% promise
+strip_svg <- function(m) {
+  d <- day_hits(m)
+  if (is.null(d)) return("<div class='kpi-sub'>no live days yet</div>")
+  k <- nrow(d); w <- 9; g <- 2.5
+  sq <- paste0(sprintf("<rect x='%.1f' y='0' width='%d' height='%d' rx='2' fill='%s'><title>%s: %d of %d hours inside%s</title></rect>",
+                       (seq_len(k) - 1) * (w + g), w, 16, hit_col(d$inside / d$n), format(d$date, "%a %d %b"), d$inside, d$n,
+                       ifelse(d$above > 0, sprintf(", %d above", d$above), "")), collapse = "")
+  share <- sum(d$inside) / sum(d$n); W <- k * (w + g) - g
+  paste0(sprintf("<svg class='strip' viewBox='0 0 %.1f 30' width='100%%' preserveAspectRatio='xMinYMid meet'>", W), sq,
+         sprintf("<rect x='0' y='23' width='%.1f' height='5' rx='2.5' fill='#ece6de'/>", W),
+         sprintf("<rect x='0' y='23' width='%.1f' height='5' rx='2.5' fill='%s'/>", W * share, hit_col(share)),
+         sprintf("<rect x='%.1f' y='20' width='2' height='11' fill='#1f2328'><title>promise: 90%%</title></rect>", W * 0.9 - 1),
+         "</svg>")
+}
+strip_val <- function(m) { d <- day_hits(m); if (is.null(d)) "–" else sprintf("%.0f%%", 100 * sum(d$inside) / sum(d$n)) }
+strip_html <- paste0(vapply(line_models, \(m) sprintf(
+  "<div class='risk-m' data-m='%s'%s><div class='kpi-value'>%s<span class='kpi-unit'>of hours · aim 90%%</span></div>%s</div>",
+  m, if (m == main) "" else " style='display:none'", strip_val(m), strip_svg(m)), ""), collapse = "")
 
 # range text and tables
 q_lab   <- function(m) q_methods[[m]]
@@ -588,15 +587,18 @@ desk <- list(
   forecast = list(date = format(latest), mean = round(mean(tile_fc[[main]])),
                   uncertain_hour = if (is.na(desk_top$w)) NULL else sprintf("%02d:00", desk_top$hour),
                   lo = if (is.na(desk_top$w)) NULL else round(desk_top$q0.05), hi = if (is.na(desk_top$w)) NULL else round(desk_top$q0.95)),
+  curve = { f <- tomorrow |> select(hour, f = all_of(main)) |> left_join(fan_wide(main), by = "hour")
+            list(hour = f$hour, mean = round(f$f), lo = round(f$q0.05), hi = round(f$q0.95)) },
+  days = { d <- day_hits(main); if (is.null(d)) NULL else list(dates = format(d$date), inside = d$inside, n = d$n) },
   tomorrow = NULL, pnl = NULL,
+  # x on a scale from lo to hi, aim marks the promise; the desk page draws each as a bar
   checks = list(
-    if (!is.null(desk_tr)) list(name = "Price inside the 90% range", value = sprintf("%.0f%%", 100 * desk_tr$share), target = "90%",
-         light = if (abs(desk_tr$share - 0.9) <= 0.03) "green" else if (abs(desk_tr$share - 0.9) <= 0.06) "amber" else "red",
-         detail = paste("last", desk_tr$days, "live days")),
-    list(name = "Forecast bias", value = sprintf("%+.0f €/MWh", desk_bias), target = "0",
-         light = if (abs(desk_bias) <= 5) "green" else if (abs(desk_bias) <= 12) "amber" else "red",
-         detail = if (desk_bias > 0) "forecast too low on average, last 30 days" else "forecast too high on average, last 30 days"),
-    list(name = "Error against the naive forecast", value = sprintf("%.0f%% lower", 100 * desk_skill), target = "backtest 51% lower",
-         light = if (desk_skill >= 0.4) "green" else if (desk_skill >= 0.2) "amber" else "red", detail = "last 30 days")))
+    if (!is.null(desk_tr)) list(name = "Inside the 90% range", value = sprintf("%.0f%%", 100 * desk_tr$share),
+         x = round(100 * desk_tr$share, 1), aim = 90, lo = 50, hi = 100,
+         light = if (abs(desk_tr$share - 0.9) <= 0.03) "green" else if (abs(desk_tr$share - 0.9) <= 0.06) "amber" else "red"),
+    list(name = "Bias, €/MWh", value = sprintf("%+.0f", desk_bias), x = round(desk_bias, 1), aim = 0, lo = -40, hi = 40,
+         light = if (abs(desk_bias) <= 5) "green" else if (abs(desk_bias) <= 12) "amber" else "red"),
+    list(name = "Error cut vs naive", value = sprintf("%.0f%%", 100 * desk_skill), x = round(100 * desk_skill, 1), aim = 51, lo = 0, hi = 100,
+         light = if (desk_skill >= 0.4) "green" else if (desk_skill >= 0.2) "amber" else "red")))
 desk$checks <- Filter(Negate(is.null), desk$checks)
 jsonlite::write_json(desk, "desk.json", auto_unbox = TRUE, null = "null")

@@ -29,20 +29,7 @@ source("R/dashboard_setup.R", local = knitr::knit_global())
 
 # Forecast
 
-## Row {height=10%}
-
-::: {.card}
-<div class="risk-line">`r risk_html`</div>
-<script>
-document.addEventListener('modelchange', function(e) {
-  var m = e.detail, spans = document.querySelectorAll('.risk-m'), hit = false;
-  spans.forEach(function(s) { if (s.dataset.m === m) hit = true; });
-  spans.forEach(function(s, i) { s.style.display = (hit ? s.dataset.m === m : i === 0) ? '' : 'none'; });
-});
-</script>
-:::
-
-## Row {height=14%}
+## Row {height=17%}
 
 ::: {.card}
 <div class="kpi" style="--accent: #f97316">
@@ -79,26 +66,31 @@ document.addEventListener('modelchange', function(e) {
 
 ::: {.card}
 <div class="kpi" style="--accent: #c2410c">
-<div>
-<div class="kpi-label">Live accuracy vs naive</div>
-<div class="kpi-value">`r live_improve`</div>
-<div class="kpi-sub">`r live_improve_sub`</div>
+<div style="width:100%">
+<div class="kpi-label">Last 30 days: inside the 90% range</div>
+`r strip_html`
 </div>
-<div class="kpi-icon"><i class="bi bi-bullseye"></i></div>
 </div>
+<script>
+document.addEventListener('modelchange', function(e) {
+  var m = e.detail, el = document.querySelectorAll('.risk-m'), hit = false;
+  el.forEach(function(s) { if (s.dataset.m === m) hit = true; });
+  el.forEach(function(s, i) { s.style.display = (hit ? s.dataset.m === m : i === 0) ? '' : 'none'; });
+});
+</script>
 :::
 
-## Row {height=76%}
+## Row {height=83%}
 
 ```{r}
-#| title: "Forecast for the next delivery day, with recent actual prices (EUR/MWh)"
+#| title: "Tomorrow, €/MWh"
 p <- plot_ly() |>
   add_lines(data = today_act, x = ~hour, y = ~actual,
-            name = paste("Actual", format(latest - 1, "%a %d %b"), "(day before)"),
+            name = paste("Actual", format(latest - 1, "%a")),
             line = list(color = grey, width = 2, dash = "dot"),
             hovertemplate = paste0("%{y:.1f} €/MWh<extra>", format(latest - 1, "%a %d %b"), "</extra>")) |>
   add_lines(data = week_act, x = ~hour, y = ~actual,
-            name = paste("Actual", format(latest - 7, "%a %d %b"), "(same weekday last week)"),
+            name = paste("Actual last", format(latest - 7, "%a")),
             line = list(color = "#cfc6bb", width = 2, dash = "dash"),
             hovertemplate = paste0("%{y:.1f} €/MWh<extra>", format(latest - 7, "%a %d %b"), "</extra>"))
 
@@ -114,14 +106,13 @@ for (m in fc_models) {
   vis <- m == fc_models[1]
   p <- p |>
     add_lines(data = scen_xy(m), x = ~x, y = ~y, xaxis = "x2", line = list(color = rgba(col, 0.22), width = 1),
-              name = "60 possible days (past errors)", visible = vis, hoverinfo = "skip") |>
+              name = "Possible days", visible = vis, hoverinfo = "skip") |>
     # on a hidden second x axis, so the shapes don't take over the hover box
     add_polygons(data = violin_xy(m), x = ~x, y = ~y, xaxis = "x2", fillcolor = rgba(col, 0.20),
-                 line = list(color = rgba(col, 0.6), width = 0.8), name = "Where each hour could land",
+                 line = list(color = rgba(col, 0.6), width = 0.8), name = "Spread per hour",
                  visible = vis, hoverinfo = "skip") |>
     add_lines(data = d, x = ~hour, y = ~f, text = ~range90,
-              name = paste0(model_labels[[m]], " forecast ", format(latest, "%a %d %b"),
-                            ", made ", format(made_dk, "%a %d %b %H:%M")),
+              name = paste(model_labels[[m]], format(latest, "%a %d %b")),
               visible = vis,
               line = list(color = col, width = 3),
               hovertemplate = paste0("%{y:.0f} €/MWh%{text}<extra>", model_labels[[m]], "</extra>"))
@@ -183,7 +174,7 @@ p |> skip_hover() |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fi
 ## Row {height=56%}
 
 ```{r}
-#| title: "Live forecasts vs actual prices, up to the last 30 days (EUR/MWh). Shaded: where the price left the 90% range. Below: hours outside it each day"
+#| title: "Live forecast vs actual, €/MWh. Red/blue: outside the 90% range"
 if (nrow(scored) == 0) {
   cat("The track record starts once the first forecast day has passed.")
 } else {
@@ -248,32 +239,41 @@ if (nrow(scored) == 0) {
 ## Row {height=30%}
 
 ```{r}
-#| title: "Live accuracy by model, up to the last 30 days"
+#| title: "Error by model, live (€/MWh, lower is better)"
 acc_live <- bind_rows(lapply(models, \(m) {
   s <- scored[!is.na(scored[[m]]), ]
   if (nrow(s) == 0) return(NULL)
-  tibble(Model            = model_labels[[m]],
-         `Days tracked`   = n_distinct(s$date),
-         `MAE (€/MWh)`    = mean(abs(s$actual - s[[m]])),
-         `RMSE (€/MWh)`   = sqrt(mean((s$actual - s[[m]])^2)),
-         `Bias (€/MWh)`   = mean(s$actual - s[[m]]),
-         `MAE, % of price` = 100 * mean(abs(s$actual - s[[m]])) / mean(abs(s$actual)))
+  tibble(m = m, model = model_labels[[m]], mae = mean(abs(s$actual - s[[m]])), bias = mean(s$actual - s[[m]]),
+         pct = 100 * mean(abs(s$actual - s[[m]])) / mean(abs(s$actual)))
 }))
 if (nrow(acc_live) > 0) {
-  acc_live |> arrange(`MAE (€/MWh)`) |> knitr::kable(digits = 1)
-} else {
-  cat("Starts once a forecast day of these models has passed.")
+  a <- acc_live |> arrange(desc(mae)) |> mutate(model = factor(model, model))
+  plot_ly(a, y = ~model, x = ~mae, type = "bar", orientation = "h",
+          marker = list(color = unname(unlist(model_colors[a$m]))),
+          text = ~sprintf("%.0f · %.0f%% of price", mae, pct), textposition = "outside", cliponaxis = FALSE,
+          hovertemplate = "%{y}: %{x:.1f} €/MWh<extra></extra>") |>
+    layout(xaxis = list(title = "", range = c(0, max(a$mae) * 1.45), gridcolor = "#f1ebe4"), yaxis = list(title = ""),
+           margin = list(l = 10, r = 10, t = 5, b = 25), paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",
+           font = list(color = grey)) |> config(displayModeBar = FALSE)
 }
 ```
 
-::: {.card}
-Every forecast was saved before the auction and never changed. With few live days, small differences say
-little yet. The [backtest](backtest.html) has `r eval_acc$n_backtest_days[1]` days.
-
-Bias: actual minus forecast, so a positive number means the forecast was too low. The error in euro is larger
-live than in the backtest because prices are higher now (`r sprintf("%.0f", mean(scored$actual, na.rm = TRUE))` €/MWh
-on average over these days); the error as a share of the price is the fairer comparison.
-:::
+```{r}
+#| title: "Bias: actual minus forecast (+ = forecast too low)"
+if (nrow(acc_live) > 0) {
+  a <- acc_live |> arrange(desc(mae)) |> mutate(model = factor(model, model))
+  lim <- max(abs(a$bias), 10) * 1.5
+  plot_ly(a, y = ~model, x = ~bias, type = "bar", orientation = "h",
+          marker = list(color = ifelse(abs(a$bias) <= 5, "#16a34a", ifelse(abs(a$bias) <= 12, "#f59e0b", "#dc2626"))),
+          text = ~sprintf("%+.0f", bias), textposition = "outside", cliponaxis = FALSE,
+          hovertemplate = "%{y}: %{x:+.1f} €/MWh<extra></extra>") |>
+    layout(xaxis = list(title = "", range = c(-lim, lim), zeroline = TRUE, zerolinecolor = ink, zerolinewidth = 2, gridcolor = "#f1ebe4"),
+           yaxis = list(title = ""),
+           shapes = list(list(type = "rect", x0 = -5, x1 = 5, y0 = -0.5, y1 = nrow(a) - 0.5, fillcolor = "rgba(22,163,74,0.08)", line = list(width = 0), layer = "below")),
+           margin = list(l = 10, r = 10, t = 5, b = 25), paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",
+           font = list(color = grey)) |> config(displayModeBar = FALSE)
+}
+```
 
 # Method {scrolling="true"}
 
