@@ -76,12 +76,13 @@ make_exog <- function(dates, neighbours, holidays) {
 }
 
 # gas (eex spot index) and co2 (eua auction), the last value known two days before delivery
-make_fuel <- function(dates, gas, co2) {
+make_fuel <- function(dates, gas, co2 = NULL) {
   last_known <- function(x, col) {
     x <- x[order(x$day), ]
     i <- findInterval(as.numeric(dates - 2), as.numeric(x$day))
     ifelse(i > 0, x[[col]][pmax(i, 1)], NA_real_)
   }
+  if (is.null(co2)) return(cbind(gas_d2 = last_known(gas, "gas")))
   cbind(gas_d2 = last_known(gas, "gas"), co2_d2 = last_known(co2, "co2"))
 }
 

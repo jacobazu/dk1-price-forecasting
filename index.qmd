@@ -336,7 +336,7 @@ cat("\n\nTried and dropped: ", paste0(dropped$input, " (", sub("^dropped: ", "",
 
 **Ranges.** 5–95% quantiles from each model's recent errors. The chance of a negative price comes from the same quantiles.
 
-**Challengers.** Changes run live next to the ensemble and only replace it if they win on a rule set in advance. Since 11 Nov a gas correction runs too: prices rose with gas in autumn 2026 and the models, trained on two years of cheaper gas, came in too low. In the backtest, gas as a model input cut the error by 2–3% (p < 0.05) and most of the bias in the months when gas moved.
+**Challengers.** Changes run live next to the ensemble and only replace it if they win on a rule set in advance. Prices rose with gas in autumn 2026, and the models, trained on two years of cheaper gas, came in too low. Since 11 Nov a gas correction runs, and since 12 Nov the same three models with the gas price as an input. In the backtest, gas inside the models cut the ensemble's error by 3.3% (p = 0.002) and its bias from 6.0 to 3.9 €/MWh; a 28-day bias correction on top took the rest.
 
 **Data:** [Energi Data Service](https://www.energidataservice.dk) (Energinet).<br>
 **Code:** [github.com/jacobazu/dk1-price-forecasting](https://github.com/jacobazu/dk1-price-forecasting)<br>

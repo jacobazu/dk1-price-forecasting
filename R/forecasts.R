@@ -21,7 +21,9 @@ all_forecasts <- function(models) {
                    actual = as.vector(t(P)))
 
   backtest <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |>
-    add_ensembles() |>
+    add_ensembles()
+  for (m in setdiff(models, names(backtest))) backtest[[m]] <- NA_real_   # challengers with no backtest here
+  backtest <- backtest |>
     select(date, hour, actual, all_of(models)) |>
     mutate(source = "backtest")
 

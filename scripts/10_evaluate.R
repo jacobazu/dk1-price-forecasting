@@ -319,10 +319,12 @@ write_csv(calib, "results/prob_calibration.csv")
 # rule fixed 12 oct 2026
 challenger_start    <- as_date("2026-10-14")
 challenger_decision <- as_date("2027-03-01")
-challengers <- c(ensemble_bc = "Bias-corrected", ensemble_gas = "Gas-corrected")
+challengers <- c(ensemble_bc = "Bias-corrected", ensemble_gas = "Gas-corrected",
+                 ensemble_fuel = "Gas in the models", ensemble_fuel_bc = "Gas in the models, bias-corrected")
 # each challenger's own start; holm only within the challengers that started together, so a later one
 # doesn't change the rule for an earlier one
-ch_start <- c(ensemble_bc = as_date("2026-10-14"), ensemble_gas = as_date("2026-11-11"))
+ch_start <- c(ensemble_bc = as_date("2026-10-14"), ensemble_gas = as_date("2026-11-11"),
+              ensemble_fuel = as_date("2026-11-12"), ensemble_fuel_bc = as_date("2026-11-12"))
 
 bt_ch <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |> add_ensembles()
 bc_bt <- postprocess(transmute(bt_ch, date, hour, actual, ensemble), "ensemble") |>

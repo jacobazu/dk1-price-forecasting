@@ -75,6 +75,19 @@ gas_adj <- safe("Gas", \() {
   4.85 + 0.366 * (g$gas[g$day == max(g$day)] - mean(g$gas))
 })[1]
 
+# challenger from 12 nov 2026: the same three models with the gas price as an input (gas only, co2 added little),
+# plus the 28 day median error of that ensemble once it has a month of live days. decided 1 mar 2027
+exog$fuel <- make_fuel(daily$date, read_csv("live/gas_live.csv", col_types = cols(day = col_date(), gas = col_double())))
+fuel_groups <- c(groups, "fuel")
+bmtx_f  <- safe("BMT-X gas",  \() bmtx_forecast_day(features, exog, d, fuel_groups))
+learx_f <- safe("LEAR-X gas", \() learx_forecast_day(features, exog, d, fuel_groups))
+xgbx_f  <- safe("XGBoost-X gas", \() xgb_day("xgbx", exog[fuel_groups]))
+fuel_bias <- safe("Gas bias", \() {
+  past <- all_forecasts("ensemble_fuel") |> transmute(date, hour, actual, forecast = ensemble_fuel) |> filter(!is.na(forecast))
+  b <- bias_day(past, target)
+  if (is.null(b)) stop("under a month of live days") else b$bias
+})[1]
+
 naive_day <- features$P[d - 1, ]   # same hour yesterday
 naive_mix <- if (features$dow[d] %in% c(1, 6, 7)) features$P[d - 7, ] else naive_day   # last week mon, sat, sun
 
@@ -89,7 +102,9 @@ new_forecast <- tibble(
   naive_mix         = round(naive_mix, 2)
 ) |>
   add_ensembles() |>   # NA if one failed
-  mutate(ensemble_bc = ensemble + bias,
+  mutate(ensemble_fuel = round((bmtx_f + learx_f + xgbx_f) / 3, 2),
+         ensemble_fuel_bc = round(ensemble_fuel + fuel_bias, 2),
+         ensemble_bc = ensemble + bias,
          ensemble_gas = ensemble + gas_adj,
          across(starts_with("ensemble"), \(x) round(x, 2)))
 
