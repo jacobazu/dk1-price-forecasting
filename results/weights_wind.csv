@@ -1,0 +1,7 @@
+test,forecast,days,mae,p_vs_average
+weights,plain average,357,16.611131999055196,NA
+weights,weighted by last 28 days,357,16.60946121914366,0.8612271874371115
+weights,best model of last 28 days,357,17.487344031446213,6.551899553681504e-7
+wind,ensemble with gas,241,18.087815996175017,NA
+wind,plus 60-day bias correction,241,17.7566378556194,0.22293127795466716
+wind,plus correction on our wind forecast,241,17.900428732794527,0.14307754532011835
