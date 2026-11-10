@@ -6,3 +6,4 @@ wx,"Weather forecast for DK1 (wind at 100 m, solar radiation), made 48 hours ahe
 wxde,"Weather forecast for Germany (wind at 100 m, solar radiation), made 48 hours ahead",Open-Meteo,48 hours before each hour,yes,used
 ,Energinet wind and solar forecasts,Energi Data Service,after the auction,no,dropped: published too late
 ,ENTSO-E load forecasts for DK1 and Germany,ENTSO-E,D-1 by 10:00,yes,"dropped: no gain, p = 0.71"
+fuel,"Gas price (EEX spot index), last value known two days ahead",Energi Data Service,the day after each gas day,yes,"testing: as a gas correction on the ensemble, decided 1 Mar 2027"

@@ -319,7 +319,10 @@ write_csv(calib, "results/prob_calibration.csv")
 # rule fixed 12 oct 2026
 challenger_start    <- as_date("2026-10-14")
 challenger_decision <- as_date("2027-03-01")
-challengers <- c(ensemble_bc = "Bias-corrected")
+challengers <- c(ensemble_bc = "Bias-corrected", ensemble_gas = "Gas-corrected")
+# each challenger's own start; holm only within the challengers that started together, so a later one
+# doesn't change the rule for an earlier one
+ch_start <- c(ensemble_bc = as_date("2026-10-14"), ensemble_gas = as_date("2026-11-11"))
 
 bt_ch <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |> add_ensembles()
 bc_bt <- postprocess(transmute(bt_ch, date, hour, actual, ensemble), "ensemble") |>
@@ -329,7 +332,7 @@ bt_ch <- left_join(bt_ch, bc_bt, by = c("date", "hour"))
 live_ch <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE,
                     col_types = cols(forecast_made_utc = col_character(), date = col_date(),
                                      hour = col_integer(), .default = col_double())) |>
-  filter(date >= challenger_start, date < challenger_decision) |>
+  filter(date < challenger_decision) |>
   inner_join(actual, by = c("date", "hour"))
 
 compare <- function(x, ch) {
@@ -345,7 +348,7 @@ compare <- function(x, ch) {
          diff = mean(d$challenger - d$champion), p = dm_test(d$challenger - d$champion)[["p"]])
 }
 challenger_tbl <- bind_rows(lapply(names(challengers), \(ch) {
-  b <- compare(bt_ch, ch); l <- compare(live_ch, ch)
+  b <- compare(bt_ch, ch); l <- compare(filter(live_ch, date >= ch_start[[ch]]), ch)
   bind_cols(tibble(challenger = ch, label = challengers[[ch]]),
             rename_with(b, \(n) paste0("backtest_", n)), rename_with(l, \(n) paste0("live_", n)))
 }))
@@ -354,11 +357,15 @@ for (v in c(paste0("backtest_", c("mae_champion", "mae_challenger", "diff", "p")
   if (!v %in% names(challenger_tbl)) challenger_tbl[[v]] <- NA_real_
 }
 challenger_tbl <- challenger_tbl |>
-  mutate(live_p_holm = p.adjust(live_p, "holm"),
+  mutate(start = ch_start[challenger]) |>
+  group_by(start) |>
+  mutate(live_p_holm = p.adjust(live_p, "holm")) |>
+  ungroup() |>
+  mutate(
          status = case_when(Sys.Date() < challenger_decision ~ "running",
                             !is.na(live_p_holm) & live_diff < 0 & live_p_holm < 0.05 ~ "replaces the ensemble",
                             TRUE ~ "ensemble kept"),
-         start = challenger_start, decision = challenger_decision)
+         decision = challenger_decision)
 print(as.data.frame(challenger_tbl))
 write_csv(challenger_tbl, "results/challengers.csv")
 

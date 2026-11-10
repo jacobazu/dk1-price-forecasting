@@ -489,8 +489,9 @@ neg_txt <- if (!is.null(prob_neg) && eval_main %in% prob_neg$model) {
           r$brier, r$brier_clim, pct(abs(r$skill)), if (r$skill >= 0) "better" else "worse")
 } else ""
 chall_txt <- if (!is.null(chall) && nrow(chall) > 0) {
-  sprintf(paste("Saved every day next to the ensemble, but not shown. On %s it replaces the ensemble only if its live MAE",
-                "is lower with p < 0.05 (Diebold-Mariano, Newey-West). Rule set before the first live day."),
+  sprintf(paste("Saved every day next to the ensemble, but not shown. On %s a challenger replaces the ensemble only if its",
+                "live MAE is lower with p < 0.05 (Diebold-Mariano, Newey-West, Holm for those started together).",
+                "Rules set before each challenger's first live day."),
           sub("^0", "", format(as_date(chall$decision[1]), "%d %B %Y")))
 } else ""
 live_cov <- if (has_prob) prob_m[prob_m$chosen, ] else NULL
