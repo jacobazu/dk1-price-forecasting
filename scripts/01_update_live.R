@@ -117,6 +117,30 @@ tryCatch({
 }, error = \(e) message("German weather not updated: ", conditionMessage(e)))
 
 
+# flows on dk1's six cables, hourly means of energinet's minute data, + = into dk1. for the neighbours page
+tryCatch({
+  file_fl <- "live/flows_live.csv"
+  fl_old <- read_csv(file_fl, col_types = cols(time = col_datetime(), .default = col_double()))
+  cab <- c(DE = "Exchange_DK1_DE", NL = "Exchange_DK1_NL", GB = "Exchange_DK1_GB", NO = "Exchange_DK1_NO",
+           SE = "Exchange_DK1_SE", DK2 = "Exchange_DK1_DK2")
+  r <- request("https://api.energidataservice.dk/dataset/PowerSystemRightNow") |>
+    req_url_query(start = format(max(fl_old$time) - hours(2), "%Y-%m-%dT%H:%M", tz = "UTC"), limit = 0,
+                  columns = paste(c("Minutes1UTC", cab), collapse = ",")) |>
+    req_retry(max_tries = 4, retry_on_failure = TRUE) |>
+    req_perform() |> resp_body_json(simplifyVector = TRUE)
+  fl_new <- as_tibble(r$records) |>
+    mutate(time = floor_date(ymd_hms(Minutes1UTC, tz = "UTC"), "hour")) |>
+    group_by(time) |>
+    summarise(across(all_of(unname(cab)), \(x) round(mean(x, na.rm = TRUE))), n = n(), .groups = "drop") |>
+    filter(n >= 50) |> select(-n) |>            # whole hours only
+    rename(all_of(cab))
+  fl_live <- bind_rows(fl_new, fl_old) |> distinct(time, .keep_all = TRUE) |>
+    filter(time >= Sys.time() - days(60)) |> arrange(time)
+  write_csv(fl_live, file_fl)
+  cat("Flows:", format(min(fl_live$time)), "to", format(max(fl_live$time)), "UTC\n")
+}, error = \(e) message("Flows not updated: ", conditionMessage(e)))
+
+
 # daily gas price (EEX spot index, gas day), for the gas challenger
 tryCatch({
   file_gas <- "live/gas_live.csv"

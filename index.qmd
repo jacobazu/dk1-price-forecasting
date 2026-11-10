@@ -288,6 +288,29 @@ if (nrow(acc_live) > 0) {
 }
 ```
 
+# Neighbours
+
+## Row {height=62%}
+
+```{r}
+#| title: !expr 'if (has_nb) paste("DK1 and its six cables,", nb_lab, "(colour: price, line: how full the cable is)") else "Neighbours"'
+#| width: 58%
+if (has_nb) neighbour_map() else cat("Starts with the next update.")
+```
+
+```{r}
+#| title: "Each cable, last 3 days: share of what it can carry"
+#| width: 42%
+if (has_nb) cable_strips()
+```
+
+## Row {height=38%}
+
+```{r}
+#| title: "DK1 minus each neighbour, last 24 hours (€/MWh)"
+if (has_nb) gap_chart()
+```
+
 # Method {scrolling="true"}
 
 ## Row {height=260px}

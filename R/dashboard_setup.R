@@ -633,3 +633,111 @@ desk <- list(
          light = if (desk_skill >= 0.4) "green" else if (desk_skill >= 0.2) "amber" else "red")))
 desk$checks <- Filter(Negate(is.null), desk$checks)
 jsonlite::write_json(desk, "desk.json", auto_unbox = TRUE, null = "null")
+
+# --- neighbours: dk1's six cables and the prices around it -------------------------------------------------
+zones <- tibble(
+  id   = c("DK1", "NO", "SE", "DK2", "DE", "NL", "GB"),
+  name = c("DK1", "Norway", "Sweden", "East Denmark", "Germany", "Netherlands", "Great Britain"),
+  x    = c(0, -0.15, 0.95, 1.1, 0.2, -0.95, -1.15),
+  y    = c(0, 1, 0.8, -0.05, -1, -0.8, 0.2),
+  pcol = c(NA, "price_NO2", "price_SE3", "price_DK2", "price_DE", NA, NA))
+flows <- if (file.exists("live/flows_live.csv")) read_csv("live/flows_live.csv", show_col_types = FALSE) else NULL
+nb_px <- if (file.exists("live/neighbours_live.csv")) read_csv("live/neighbours_live.csv", show_col_types = FALSE) else NULL
+has_nb <- !is.null(flows) && nrow(flows) >= 24 && !is.null(nb_px)
+if (has_nb) {
+  cables  <- setdiff(names(flows), "time")
+  cap     <- sapply(flows[cables], \(v) max(abs(v), na.rm = TRUE))   # the most each cable has carried in the file
+  nb_time <- max(flows$time)   # the newest hour with flows
+  nb_now  <- flows[flows$time == nb_time, ]
+  nb_lab  <- format(with_tz(nb_time, "Europe/Copenhagen"), "%a %d %b %H:00")
+  dk1_px  <- actual |> mutate(time = with_tz(force_tz(as_datetime(date) + hours(hour), "Europe/Copenhagen"), "UTC"))
+  px_at   <- function(t) {
+    n <- nb_px[nb_px$time == t, ]
+    c(DK1 = dk1_px$actual[match(t, dk1_px$time)],
+      sapply(setNames(zones$pcol[-1], zones$id[-1]), \(col) if (is.na(col) || nrow(n) == 0) NA_real_ else n[[col]][1]))
+  }
+  nb_price <- px_at(nb_time)
+}
+
+neighbour_map <- function() {
+  z <- zones |> mutate(price = nb_price[id])
+  ramp <- grDevices::colorRamp(c("#fde3cc", "#f97316", "#9a3412"))
+  rng  <- range(z$price, na.rm = TRUE)
+  fill <- rep("#e5e7eb", nrow(z))
+  ok <- !is.na(z$price)
+  if (any(ok)) {
+    v <- ramp(pmin(pmax((z$price[ok] - rng[1]) / max(diff(rng), 1), 0), 1))
+    fill[ok] <- grDevices::rgb(v[, 1], v[, 2], v[, 3], maxColorValue = 255)
+  }
+  p <- plot_ly()
+  ann <- list()
+  for (cb in cables) {
+    f <- nb_now[[cb]]; u <- abs(f) / cap[[cb]]; zz <- z[z$id == cb, ]
+    full <- u >= 0.95
+    p <- p |> add_trace(x = c(0.16, 0.86) * zz$x, y = c(0.16, 0.86) * zz$y, type = "scatter", mode = "lines", hoverinfo = "skip", showlegend = FALSE,
+                        line = list(color = if (full) ink else "#b9b2a8", width = 2 + 9 * u))
+    # arrow: into dk1 when the flow is positive
+    from <- if (f >= 0) c(zz$x, zz$y) else c(0, 0); to <- if (f >= 0) c(0, 0) else c(zz$x, zz$y)
+    a <- from + 0.2 * (to - from); b <- from + 0.36 * (to - from)
+    ann[[length(ann) + 1]] <- list(x = b[1], y = b[2], ax = a[1], ay = a[2], xref = "x", yref = "y", axref = "x", ayref = "y",
+                                   showarrow = TRUE, arrowhead = 2, arrowsize = 1.1, arrowwidth = 3,
+                                   arrowcolor = "#f97316", text = "")
+    ann[[length(ann) + 1]] <- list(x = zz$x * 0.5, y = zz$y * 0.5, xref = "x", yref = "y", showarrow = FALSE,
+                                   text = sprintf("<b>%s MW %s</b><br>%.0f%% of the cable%s", format(abs(round(f)), big.mark = ","),
+                                                  if (f >= 0) "in" else "out", 100 * u, if (full) ", full" else ""),
+                                   font = list(size = 11, color = ink), bgcolor = "rgba(255,255,255,0.85)", borderpad = 2)
+  }
+  p |>
+    add_trace(data = z, x = ~x, y = ~y, type = "scatter", mode = "markers", showlegend = FALSE,
+              marker = list(size = ifelse(z$id == "DK1", 64, 50), color = fill, opacity = 1, line = list(color = "#ffffff", width = 3)),
+              text = ~ifelse(is.na(price), paste0(name, ": no price in the data"), sprintf("%s: %.0f €/MWh", name, price)),
+              hovertemplate = "%{text}<extra></extra>") |>
+    add_text(data = z, x = ~x, y = ~y - ifelse(id == "DK1", 0.21, 0.18), showlegend = FALSE, hoverinfo = "skip",
+             text = ~ifelse(is.na(price), paste0("<b>", name, "</b>"), sprintf("<b>%s</b><br>%.0f €/MWh", name, price)),
+             textposition = "bottom center", textfont = list(color = ink, size = 12)) |>
+    layout(annotations = ann, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",
+           font = list(family = "IBM Plex Sans, Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
+           xaxis = list(visible = FALSE, range = c(-1.6, 1.55)), yaxis = list(visible = FALSE, range = c(-1.5, 1.25), scaleanchor = "x"),
+           margin = list(l = 0, r = 0, t = 0, b = 0), hoverlabel = list(bgcolor = "#ffffff", font = list(color = ink))) |>
+    config(displayModeBar = FALSE)
+}
+
+# each cable over the last days as a share of what it can carry: up = into dk1, down = out
+cable_strips <- function(days = 3) {
+  f <- flows |> filter(time > nb_time - days(days)) |> mutate(t = with_tz(time, "Europe/Copenhagen"))
+  plots <- lapply(cables, \(cb) {
+    u <- f[[cb]] / cap[[cb]]
+    plot_ly(x = f$t, y = u, type = "scatter", mode = "lines", fill = "tozeroy", fillcolor = "rgba(249,115,22,0.18)",
+            line = list(color = "#f97316", width = 1.5), showlegend = FALSE,
+            text = sprintf("%s MW %s", format(abs(round(f[[cb]])), big.mark = ","), ifelse(f[[cb]] >= 0, "into DK1", "out of DK1")),
+            hovertemplate = "%{x|%a %H:00}: %{text}<extra></extra>") |>
+      layout(yaxis = list(range = c(-1.1, 1.1), tickvals = c(-1, 0, 1), ticktext = c("out", "0", "in"), gridcolor = "#f1ebe4",
+                          zeroline = TRUE, zerolinecolor = "#cfc6bb", color = grey),
+             xaxis = list(showgrid = FALSE, color = grey, tickformat = "%a"),
+             annotations = list(list(x = 0, y = 1.02, xref = "paper", yref = "paper", xanchor = "left", yanchor = "bottom", showarrow = FALSE,
+                                     text = paste0("<b>", zones$name[zones$id == cb], "</b>"), font = list(color = ink, size = 12))))
+  })
+  subplot(plots, nrows = 3, shareX = TRUE, margin = c(0.05, 0.05, 0.07, 0.07)) |>
+    layout(paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)", margin = list(t = 25, l = 30, r = 10, b = 20),
+           font = list(family = "IBM Plex Sans, Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey)) |>
+    config(displayModeBar = FALSE)
+}
+
+# dk1 against each neighbour, last 24 hours: the price gap a cable owner earns when the cable is full
+gap_chart <- function() {
+  hrs <- flows$time[flows$time > nb_time - hours(24)]
+  g <- bind_rows(lapply(hrs, \(t) { p <- px_at(t); tibble(time = t, id = names(p)[-1], gap = p[["DK1"]] - p[-1]) })) |>
+    filter(!is.na(gap)) |> group_by(id) |>
+    summarise(mean_gap = mean(gap), apart = mean(abs(gap) > 1), .groups = "drop") |>
+    left_join(zones, by = "id") |> arrange(mean_gap) |> mutate(name = factor(name, name))
+  lim <- max(abs(g$mean_gap), 5) * 1.35
+  plot_ly(g, y = ~name, x = ~mean_gap, type = "bar", orientation = "h", marker = list(color = "#f97316", cornerradius = 4),
+          text = ~sprintf("%+.0f € · apart %.0f%% of hours", mean_gap, 100 * apart), textposition = "outside", cliponaxis = FALSE,
+          textfont = list(color = ink), hovertemplate = "DK1 minus %{y}: %{x:+.1f} €/MWh<extra></extra>") |>
+    layout(xaxis = list(range = c(-lim, lim), zeroline = TRUE, zerolinecolor = ink, zerolinewidth = 1.5, ticksuffix = " €",
+                        gridcolor = "#f1ebe4", title = "", color = grey),
+           yaxis = list(title = "", color = ink), bargap = 0.45, margin = list(l = 10, r = 10, t = 5, b = 25),
+           paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",
+           font = list(family = "IBM Plex Sans, Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey)) |>
+    config(displayModeBar = FALSE)
+}
