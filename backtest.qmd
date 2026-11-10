@@ -144,7 +144,7 @@ if (has_prob) {
 ## Row {height=14%}
 
 ::: {.card}
-<div class="kpi" style="--accent: #62d6e8">
+<div class="kpi" style="--accent: #c0800c">
 <div>
 <div class="kpi-label">`r bat_best_label` share of max profit</div>
 <div class="kpi-value">`r bat_share`</div>
@@ -155,7 +155,7 @@ if (has_prob) {
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #4fd08a">
+<div class="kpi" style="--accent: #15803d">
 <div>
 <div class="kpi-label">Extra profit vs naive</div>
 <div class="kpi-value">`r bat_extra`<span class="kpi-unit">€</span></div>
@@ -166,7 +166,7 @@ if (has_prob) {
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #8fa6bd">
+<div class="kpi" style="--accent: #78716c">
 <div>
 <div class="kpi-label">Significance</div>
 <div class="kpi-value">`r bat_p`</div>
@@ -225,7 +225,7 @@ No fees or battery wear.
 ## Row {height=130px}
 
 ::: {.card}
-<div class="kpi" style="--accent: #8fa6bd">
+<div class="kpi" style="--accent: #78716c">
 <div>
 <div class="kpi-label">Days below the floor</div>
 <div class="kpi-value">`r risk_hit`</div>
@@ -246,10 +246,10 @@ if (!has_risk) {
   plot_ly(rd, x = ~date) |>
     add_lines(y = ~realized, name = "Revenue", line = list(color = orange, width = 1.5),
               hovertemplate = "%{y:,.0f} €<extra>Revenue</extra>") |>
-    add_lines(y = ~floor, name = "95% floor (expected minus VaR)", line = list(color = "#c97d2c", width = 1.5),
+    add_lines(y = ~floor, name = "95% floor (expected minus VaR)", line = list(color = "#5b8a1a", width = 1.5),
               hovertemplate = "%{y:,.0f} €<extra>95% floor</extra>") |>
     add_markers(data = filter(rd, miss), y = ~realized, name = "Below the floor",
-                marker = list(color = ink, size = 8, line = list(color = "#0c1c30", width = 2)),
+                marker = list(color = ink, size = 8, line = list(color = "#ffffff", width = 2)),
                 hovertemplate = "%{y:,.0f} €<extra>Below the floor</extra>") |>
     chart_layout() |>
     layout(margin = list(t = 20))

@@ -2,7 +2,7 @@
 (function () {
   const D = JSON.parse(document.getElementById("fv-data").textContent), root = document.getElementById("fv");
   const taus = Array.from({ length: 19 }, (_, i) => 0.05 + 0.05 * i), n = 24;
-  const mute = "#8fa6bd", grid = "rgba(255,255,255,.07)", aqua = "#62d6e8", amber = "#ffb86b", ink = "#e9f0f7";
+  const mute = "#78716c", grid = "#f0ece8", aqua = "#c0800c", amber = "#b32640", ink = "#1c1917";
   const hh = h => String(h).padStart(2, "0"), r0 = v => Math.round(v);
   let cur = D.main;
 
@@ -41,10 +41,10 @@
       `<stop offset="${(i / 39 * 100).toFixed(1)}%" stop-color="${h == pk ? amber : aqua}" stop-opacity="${(0.04 + 0.86 * o[1] ** 1.3).toFixed(3)}"/>`).join("") + "</linearGradient>";
     s += "</defs>";
     const step = (top - bot) / 4;
-    for (let g = bot; g <= top + 1e-9; g += step) s += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "rgba(255,255,255,.3)" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
+    for (let g = bot; g <= top + 1e-9; g += step) s += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "#a8a29e" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
     for (let h = 0; h < n; h++) {
       if (Q) s += `<rect x="${x(h) - cw * .4}" width="${cw * .8}" y="${y(Q[h][18])}" height="${Math.max(2, y(Q[h][0]) - y(Q[h][18]))}" rx="${cw * .16}" fill="url(#fvg${h})"/>`;
-      s += `<rect x="${x(h) - cw * .4}" width="${cw * .8}" y="${y(f[h]) - 1.5}" height="3" rx="1.5" fill="#fff"/>`;
+      s += `<rect x="${x(h) - cw * .4}" width="${cw * .8}" y="${y(f[h]) - 1.5}" height="3" rx="1.5" fill="#1c1917"/>`;
       s += `<text x="${x(h)}" y="${H - 40}" text-anchor="middle" fill="${mute}">${hh(h)}</text><text x="${x(h)}" y="${H - 16}" text-anchor="middle" class="fv-v" fill="${h == pk ? amber : ink}">${r0(f[h])}</text>`;
       s += `<rect class="fv-hit" data-h="${h}" x="${x(h) - cw / 2}" width="${cw}" y="${T}" height="${H - T}" fill="transparent"/>`;
     }
@@ -58,7 +58,7 @@
     const top = smooth(dd.filter((_, i) => i % 4 == 0 || i == 119).map(o => [X(o[0]), Y(o[1])]));
     let t = `<svg viewBox="0 0 ${w} ${hg}" role="img" aria-label="Distribution of the price at ${hh(h)}:00"><defs><linearGradient id="fva" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${aqua}" stop-opacity=".55"/><stop offset="1" stop-color="${aqua}" stop-opacity=".04"/></linearGradient></defs>`;
     t += `<path d="${top}L${X(q[18])},${Y(0)}L${X(q[0])},${Y(0)}Z" fill="url(#fva)"/><path d="${top}" fill="none" stroke="${aqua}" stroke-width="1.8"/>`;
-    t += `<line x1="${X(M.mean[h])}" x2="${X(M.mean[h])}" y1="${Y(1.04)}" y2="${Y(0)}" stroke="#fff" stroke-width="1.6" stroke-dasharray="3 3"/>`;
+    t += `<line x1="${X(M.mean[h])}" x2="${X(M.mean[h])}" y1="${Y(1.04)}" y2="${Y(0)}" stroke="#1c1917" stroke-width="1.6" stroke-dasharray="3 3"/>`;
     for (const k of [0, 9, 18]) t += `<text x="${X(q[k])}" y="${hg - 6}" text-anchor="${k == 0 ? "start" : k == 18 ? "end" : "middle"}" fill="${mute}">${r0(q[k])}</text>`;
     return t + "</svg>";
   }
@@ -68,7 +68,7 @@
     const k = d.inside.length, w = 360, hg = 132, bw = (w - 12) / k, r = Math.min(6, (bw - 3) / 2); let b = `<svg viewBox="0 0 ${w} ${hg}" role="img" aria-label="Hours inside the range per day">`;
     d.inside.forEach((v, i) => {
       const hgt = Math.max(2 * r, (hg - 40) * v / d.n[i]);
-      b += `<rect x="${6 + bw * i + 1.5}" width="${bw - 3}" y="14" height="${hg - 40}" rx="${r}" fill="rgba(255,255,255,.06)"/>`;
+      b += `<rect x="${6 + bw * i + 1.5}" width="${bw - 3}" y="14" height="${hg - 40}" rx="${r}" fill="#f5f2ef"/>`;
       b += `<rect x="${6 + bw * i + 1.5}" width="${bw - 3}" y="${hg - 26 - hgt}" height="${hgt}" rx="${r}" fill="${aqua}" fill-opacity="${v / d.n[i] >= 0.8 ? 1 : .4}"><title>${d.dates[i]}: ${v} of ${d.n[i]} hours inside</title></rect>`;
     });
     return b + `<text x="6" y="${hg - 6}" fill="${mute}">${d.dates[0]}</text><text x="${w - 6}" y="${hg - 6}" text-anchor="end" fill="${mute}">${d.dates[k - 1]}</text></svg>`;
@@ -76,7 +76,7 @@
 
   function meter(k) {
     const p = Math.max(0, Math.min(100, 100 * (k.x - k.lo) / (k.hi - k.lo))), a = 100 * (k.aim - k.lo) / (k.hi - k.lo);
-    const col = k.light == "green" ? "#4fd08a" : k.light == "red" ? "#ff7a7a" : "#f5c451";
+    const col = k.light == "green" ? "#15803d" : k.light == "red" ? "#b91c1c" : "#b45309";
     return `<div class="fv-m"><span>${k.name}</span><b>${k.value}</b></div><div class="fv-bar"><i style="left:${a}%"></i><u style="left:calc(${p}% - 5px);background:${col}"></u></div>`;
   }
 
@@ -84,7 +84,7 @@
     const M = D.models[cur], f = M.mean, pk = f.indexOf(Math.max(...f)), lw = f.indexOf(Math.min(...f)), avg = r0(f.reduce((a, b) => a + b) / n);
     const unc = M.q ? M.q.map(q => q[18] - q[0]).indexOf(Math.max(...M.q.map(q => q[18] - q[0]))) : null;
     const keys = Object.keys(D.models);
-    root.innerHTML = `<div class="fv-top"><h1>${D.day}<small>Saved ${D.made}, before the auction. The brighter the colour, the more likely the price.</small></h1>
+    root.innerHTML = `<div class="fv-top"><h1>${D.day}<small>Saved ${D.made}, before the auction. The darker the colour, the more likely the price.</small></h1>
       <div class="fv-num"><b>${avg}</b>average, €/MWh</div><div class="fv-num"><b style="color:${amber}">${r0(f[pk])}</b>highest, ${hh(pk)}:00</div>
       <div class="fv-num"><b>${r0(f[lw])}</b>lowest, ${hh(lw)}:00</div><div class="fv-num"><b>${D.neg}</b>chance of a negative price</div></div>
       ${keys.length > 1 ? `<div class="fv-pills">${keys.map(k => `<button data-m="${k}" class="${k == cur ? "on" : ""}">${D.models[k].label}</button>`).join("")}</div>` : ""}

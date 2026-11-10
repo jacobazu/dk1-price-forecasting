@@ -16,9 +16,9 @@ inputs_reg <- check_divider()
 
 Sys.setlocale("LC_TIME", "C")   # english dates
 
-orange <- "#2fa3b8"
-grey   <- "#8fa6bd"
-ink    <- "#e9f0f7"
+orange <- "#c0800c"
+grey   <- "#78716c"
+ink    <- "#1c1917"
 
 # actual prices, dk time
 actual <- readRDS("data/processed/prices_dk1_hourly.rds") |>
@@ -67,12 +67,12 @@ spot_labels <- c(ensemble  = "Ensemble",
                  naive_mix = "Naive")
 # older models, fallback only
 old_labels  <- c(lear = "LEAR", bmt = "BMT", xgb = "XGBoost")
-model_colors <- c(ensemble  = "#2fa3b8",
-                  bmtx      = "#8f74e8",
-                  learx     = "#d45c88",
-                  xgbx      = "#c97d2c",
-                  naive_mix = "#6f859b",
-                  lear      = "#5b8fd6",
+model_colors <- c(ensemble  = "#c0800c",
+                  bmtx      = "#b32640",
+                  learx     = "#1c7fb0",
+                  xgbx      = "#5b8a1a",
+                  naive_mix = "#a8a29e",
+                  lear      = "#57534e",
                   bmt       = "#a36a3f",
                   xgb       = "#65a30d")
 has_spot <- any(sapply(setdiff(names(spot_labels), "naive_mix"),
@@ -124,12 +124,12 @@ chart_layout <- function(p, models = NULL, xtitle = "", n_fixed = 1, per_model =
            plot_bgcolor  = "rgba(0,0,0,0)",
            font = list(family = "Instrument Sans, Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
            xaxis = list(title = xtitle, showgrid = FALSE, zeroline = FALSE, color = grey,
-                        linecolor = "rgba(255,255,255,0.15)"),
-           yaxis = list(title = "", color = grey, gridcolor = "rgba(255,255,255,0.07)",
-                        zerolinecolor = "rgba(255,255,255,0.28)"),
+                        linecolor = "#e7e5e4"),
+           yaxis = list(title = "", color = grey, gridcolor = "#f0ece8",
+                        zerolinecolor = "#d6d3d1"),
            legend = list(orientation = "h", x = 0, y = -0.15, font = list(color = ink)),
            hovermode = "x unified",
-           hoverlabel = list(bgcolor = "#15324f", bordercolor = "#2b4a6b",
+           hoverlabel = list(bgcolor = "#ffffff", bordercolor = "#e7e5e4",
                              font = list(color = ink)),
            margin = list(t = 50)) |>
     config(displayModeBar = FALSE)
@@ -174,7 +174,7 @@ long_labels <- c(perfect = "Perfect foresight",
 text_labels <- c(perfect = "perfect foresight", ensemble = "the ensemble",
                  bmtx = "BMT-X", learx = "LEAR-X", xgbx = "XGBoost-X", naive_mix = "the weekly naive",
                  lear = "LEAR", bmt = "BMT", xgb = "XGBoost")
-strat_colors <- c(perfect = "rgba(255,255,255,0.28)", model_colors)
+strat_colors <- c(perfect = "#d6d3d1", model_colors)
 
 cap      <- function(x) paste0(toupper(substring(x, 1, 1)), substring(x, 2))
 pct      <- function(x) paste0(format(round(100 * x, 1), nsmall = 1), "%")
@@ -454,7 +454,7 @@ key_hours <- function(m) {
   if (nrow(f) == 0 || all(is.na(f$q0.05))) return(NULL)
   k <- tibble(hour = c(f$hour[which.min(f$f)], f$hour[which.max(f$f)], f$hour[which.max(f$q0.95 - f$q0.05)]),
               what = c("Cheapest", "Most expensive", "Most uncertain"),
-              col  = c("#d45c88", "#2fa3b8", "#8f74e8"))
+              col  = c("#1c7fb0", "#c0800c", "#b32640"))
   # drop a key hour that sits within two hours of one already kept, so the shapes don't overlap
   keep <- logical(nrow(k))
   for (i in seq_len(nrow(k))) keep[i] <- all(abs(k$hour[i] - k$hour[keep]) > 2)
@@ -482,7 +482,7 @@ day_hits <- function(m) {
                                    above = sum(actual > f + o0.95), .groups = "drop") |>
     mutate(below = n - inside - above)
 }
-hit_col <- function(s) ifelse(s >= 0.9, "#4fd08a", ifelse(s >= 0.75, "#f5c451", "#ff7a7a"))
+hit_col <- function(s) ifelse(s >= 0.9, "#15803d", ifelse(s >= 0.75, "#b45309", "#b91c1c"))
 
 # one square per day, coloured by the share of hours inside the range; a bar with a tick at the 90% promise
 strip_svg <- function(m) {
@@ -494,9 +494,9 @@ strip_svg <- function(m) {
                        ifelse(d$above > 0, sprintf(", %d above", d$above), "")), collapse = "")
   share <- sum(d$inside) / sum(d$n); W <- k * (w + g) - g
   paste0(sprintf("<svg class='strip' viewBox='0 0 %.1f 30' width='100%%' preserveAspectRatio='xMinYMid meet'>", W), sq,
-         sprintf("<rect x='0' y='23' width='%.1f' height='5' rx='2.5' fill='rgba(255,255,255,0.08)'/>", W),
+         sprintf("<rect x='0' y='23' width='%.1f' height='5' rx='2.5' fill='#f0ece8'/>", W),
          sprintf("<rect x='0' y='23' width='%.1f' height='5' rx='2.5' fill='%s'/>", W * share, hit_col(share)),
-         sprintf("<rect x='%.1f' y='20' width='2' height='11' fill='#e9f0f7'><title>promise: 90%%</title></rect>", W * 0.9 - 1),
+         sprintf("<rect x='%.1f' y='20' width='2' height='11' fill='#1c1917'><title>promise: 90%%</title></rect>", W * 0.9 - 1),
          "</svg>")
 }
 strip_val <- function(m) { d <- day_hits(m); if (is.null(d)) "–" else sprintf("%.0f%%", 100 * sum(d$inside) / sum(d$n)) }
@@ -662,9 +662,9 @@ if (has_nb) {
 
 neighbour_map <- function() {
   z <- zones |> mutate(price = nb_price[id])
-  ramp <- grDevices::colorRamp(c("#173a55", "#2fa3b8", "#62d6e8"))
+  ramp <- grDevices::colorRamp(c("#fdf3e1", "#c0800c", "#9a5b06"))
   rng  <- range(z$price, na.rm = TRUE)
-  fill <- rep("#22384f", nrow(z))
+  fill <- rep("#e7e5e4", nrow(z))
   ok <- !is.na(z$price)
   if (any(ok)) {
     v <- ramp(pmin(pmax((z$price[ok] - rng[1]) / max(diff(rng), 1), 0), 1))
@@ -672,7 +672,7 @@ neighbour_map <- function() {
   }
   flow_txt <- sapply(z$id, \(id) if (id %in% cables) {
     f <- nb_now[[id]]
-    sprintf("<br><span style='color:#62d6e8'>%s MW %s, %.0f%% full</span>", format(abs(round(f)), big.mark = ","),
+    sprintf("<br><span style='color:#9a5b06'>%s MW %s, %.0f%% full</span>", format(abs(round(f)), big.mark = ","),
             if (f >= 0) "in" else "out", 100 * abs(f) / cap[[id]])
   } else "")
   side <- ifelse(z$id == "DK1", "bottom", ifelse(z$y > 0.5, "top", ifelse(z$y < -0.5, "bottom", ifelse(z$x < 0, "left", "right"))))
@@ -686,17 +686,17 @@ neighbour_map <- function() {
     f <- nb_now[[cb]]; u <- abs(f) / cap[[cb]]; zz <- z[z$id == cb, ]
     full <- u >= 0.95
     p <- p |> add_trace(x = c(0.16, 0.86) * zz$x, y = c(0.16, 0.86) * zz$y, type = "scatter", mode = "lines", hoverinfo = "skip", showlegend = FALSE,
-                        line = list(color = if (full) ink else "#4a6079", width = 2 + 9 * u))
+                        line = list(color = if (full) ink else "#a8a29e", width = 2 + 9 * u))
     # arrow: into dk1 when the flow is positive
     from <- if (f >= 0) c(zz$x, zz$y) else c(0, 0); to <- if (f >= 0) c(0, 0) else c(zz$x, zz$y)
     a <- from + 0.2 * (to - from); b <- from + 0.36 * (to - from)
     ann[[length(ann) + 1]] <- list(x = b[1], y = b[2], ax = a[1], ay = a[2], xref = "x", yref = "y", axref = "x", ayref = "y",
                                    showarrow = TRUE, arrowhead = 2, arrowsize = 1.1, arrowwidth = 3,
-                                   arrowcolor = "#2fa3b8", text = "")
+                                   arrowcolor = "#c0800c", text = "")
   }
   p |>
     add_trace(data = z, x = ~x, y = ~y, type = "scatter", mode = "markers", showlegend = FALSE,
-              marker = list(size = ifelse(z$id == "DK1", 74, 58), color = fill, opacity = 1, line = list(color = "#0c1c30", width = 3)),
+              marker = list(size = ifelse(z$id == "DK1", 74, 58), color = fill, opacity = 1, line = list(color = "#ffffff", width = 3)),
               text = ~ifelse(is.na(price), paste0(name, ": no price in the data"), sprintf("%s: %.0f €/MWh", name, price)),
               hovertemplate = "%{text}<extra></extra>") |>
     # one label per country, on the outer side: name, price and what its cable carries
@@ -705,7 +705,7 @@ neighbour_map <- function() {
     layout(annotations = ann, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",
            font = list(family = "Instrument Sans, Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
            xaxis = list(visible = FALSE, range = c(-2.6, 2.6)), yaxis = list(visible = FALSE, range = c(-1.95, 1.95), scaleanchor = "x"),
-           margin = list(l = 0, r = 0, t = 0, b = 0), hoverlabel = list(bgcolor = "#15324f", font = list(color = ink))) |>
+           margin = list(l = 0, r = 0, t = 0, b = 0), hoverlabel = list(bgcolor = "#ffffff", font = list(color = ink))) |>
     config(displayModeBar = FALSE)
 }
 
@@ -714,12 +714,12 @@ cable_strips <- function(days = 3) {
   f <- flows |> filter(time > nb_time - days(days)) |> mutate(t = with_tz(time, "Europe/Copenhagen"))
   plots <- lapply(cables, \(cb) {
     u <- f[[cb]] / cap[[cb]]
-    plot_ly(x = f$t, y = u, type = "scatter", mode = "lines", fill = "tozeroy", fillcolor = "rgba(98,214,232,0.15)",
-            line = list(color = "#2fa3b8", width = 1.5), showlegend = FALSE,
+    plot_ly(x = f$t, y = u, type = "scatter", mode = "lines", fill = "tozeroy", fillcolor = "rgba(192,128,12,0.15)",
+            line = list(color = "#c0800c", width = 1.5), showlegend = FALSE,
             text = sprintf("%s MW %s", format(abs(round(f[[cb]])), big.mark = ","), ifelse(f[[cb]] >= 0, "into DK1", "out of DK1")),
             hovertemplate = "%{x|%a %H:00}: %{text}<extra></extra>") |>
-      layout(yaxis = list(range = c(-1.1, 1.1), tickvals = c(-1, 0, 1), ticktext = c("out", "0", "in"), gridcolor = "rgba(255,255,255,0.07)",
-                          zeroline = TRUE, zerolinecolor = "rgba(255,255,255,0.28)", color = grey),
+      layout(yaxis = list(range = c(-1.1, 1.1), tickvals = c(-1, 0, 1), ticktext = c("out", "0", "in"), gridcolor = "#f0ece8",
+                          zeroline = TRUE, zerolinecolor = "#d6d3d1", color = grey),
              xaxis = list(showgrid = FALSE, color = grey, tickformat = "%a"),
              annotations = list(list(x = 0, y = 1.02, xref = "paper", yref = "paper", xanchor = "left", yanchor = "bottom", showarrow = FALSE,
                                      text = paste0("<b>", zones$name[zones$id == cb], "</b>"), font = list(color = ink, size = 12))))
@@ -738,11 +738,11 @@ gap_chart <- function() {
     summarise(mean_gap = mean(gap), apart = mean(abs(gap) > 1), .groups = "drop") |>
     left_join(zones, by = "id") |> arrange(mean_gap) |> mutate(name = factor(name, name))
   lim <- max(abs(g$mean_gap), 5) * 1.35
-  plot_ly(g, y = ~name, x = ~mean_gap, type = "bar", orientation = "h", marker = list(color = "#2fa3b8", cornerradius = 4),
+  plot_ly(g, y = ~name, x = ~mean_gap, type = "bar", orientation = "h", marker = list(color = "#c0800c", cornerradius = 4),
           text = ~sprintf("%+.0f € · apart %.0f%% of hours", mean_gap, 100 * apart), textposition = "outside", cliponaxis = FALSE,
           textfont = list(color = ink), hovertemplate = "DK1 minus %{y}: %{x:+.1f} €/MWh<extra></extra>") |>
     layout(xaxis = list(range = c(-lim, lim), zeroline = TRUE, zerolinecolor = ink, zerolinewidth = 1.5, ticksuffix = " €",
-                        gridcolor = "rgba(255,255,255,0.07)", title = "", color = grey),
+                        gridcolor = "#f0ece8", title = "", color = grey),
            yaxis = list(title = "", color = ink), bargap = 0.45, margin = list(l = 10, r = 10, t = 5, b = 25),
            paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",
            font = list(family = "Instrument Sans, Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey)) |>
