@@ -670,6 +670,16 @@ neighbour_map <- function() {
     v <- ramp(pmin(pmax((z$price[ok] - rng[1]) / max(diff(rng), 1), 0), 1))
     fill[ok] <- grDevices::rgb(v[, 1], v[, 2], v[, 3], maxColorValue = 255)
   }
+  flow_txt <- sapply(z$id, \(id) if (id %in% cables) {
+    f <- nb_now[[id]]
+    sprintf("<br><span style='color:#62d6e8'>%s MW %s, %.0f%% full</span>", format(abs(round(f)), big.mark = ","),
+            if (f >= 0) "in" else "out", 100 * abs(f) / cap[[id]])
+  } else "")
+  side <- ifelse(z$id == "DK1", "bottom", ifelse(z$y > 0.5, "top", ifelse(z$y < -0.5, "bottom", ifelse(z$x < 0, "left", "right"))))
+  lab <- z |> mutate(txt = paste0("<b>", name, "</b>", ifelse(is.na(price), "", sprintf("<br>%.0f €/MWh", price)), flow_txt),
+                     pos = c(top = "top center", bottom = "bottom center", left = "middle left", right = "middle right")[side],
+                     lx = x + case_when(side == "left" ~ -0.3, side == "right" ~ 0.3, TRUE ~ 0),
+                     ly = y + case_when(side == "top" ~ 0.3, id == "DK1" ~ -0.34, side == "bottom" ~ -0.3, TRUE ~ 0))
   p <- plot_ly()
   ann <- list()
   for (cb in cables) {
@@ -683,26 +693,18 @@ neighbour_map <- function() {
     ann[[length(ann) + 1]] <- list(x = b[1], y = b[2], ax = a[1], ay = a[2], xref = "x", yref = "y", axref = "x", ayref = "y",
                                    showarrow = TRUE, arrowhead = 2, arrowsize = 1.1, arrowwidth = 3,
                                    arrowcolor = "#2fa3b8", text = "")
-    ann[[length(ann) + 1]] <- list(x = zz$x * 0.6, y = zz$y * 0.6, xref = "x", yref = "y", showarrow = FALSE,
-                                   text = sprintf("<b>%s MW %s</b><br>%.0f%% full", format(abs(round(f)), big.mark = ","),
-                                                  if (f >= 0) "in" else "out", 100 * u),
-                                   font = list(size = 11, color = ink), bgcolor = "rgba(12,28,48,0.85)", borderpad = 2)
   }
   p |>
     add_trace(data = z, x = ~x, y = ~y, type = "scatter", mode = "markers", showlegend = FALSE,
-              marker = list(size = ifelse(z$id == "DK1", 64, 50), color = fill, opacity = 1, line = list(color = "#0c1c30", width = 3)),
+              marker = list(size = ifelse(z$id == "DK1", 74, 58), color = fill, opacity = 1, line = list(color = "#0c1c30", width = 3)),
               text = ~ifelse(is.na(price), paste0(name, ": no price in the data"), sprintf("%s: %.0f €/MWh", name, price)),
               hovertemplate = "%{text}<extra></extra>") |>
-    # labels on the outer side, away from the cables
-    add_text(data = z |> filter(y <= 0.5), x = ~x, y = ~y - ifelse(id == "DK1", 0.21, 0.18), showlegend = FALSE, hoverinfo = "skip",
-             text = ~ifelse(is.na(price), paste0("<b>", name, "</b>"), sprintf("<b>%s</b><br>%.0f €/MWh", name, price)),
-             textposition = "bottom center", textfont = list(color = ink, size = 12)) |>
-    add_text(data = z |> filter(y > 0.5), x = ~x, y = ~y + 0.18, showlegend = FALSE, hoverinfo = "skip",
-             text = ~ifelse(is.na(price), paste0("<b>", name, "</b>"), sprintf("<b>%s</b><br>%.0f €/MWh", name, price)),
-             textposition = "top center", textfont = list(color = ink, size = 12)) |>
+    # one label per country, on the outer side: name, price and what its cable carries
+    add_text(data = lab, x = ~lx, y = ~ly, text = ~txt, textposition = ~pos, showlegend = FALSE, hoverinfo = "skip",
+             textfont = list(color = ink, size = 14)) |>
     layout(annotations = ann, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",
            font = list(family = "Instrument Sans, Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
-           xaxis = list(visible = FALSE, range = c(-1.75, 1.7)), yaxis = list(visible = FALSE, range = c(-1.65, 1.7), scaleanchor = "x"),
+           xaxis = list(visible = FALSE, range = c(-2.6, 2.6)), yaxis = list(visible = FALSE, range = c(-1.95, 1.95), scaleanchor = "x"),
            margin = list(l = 0, r = 0, t = 0, b = 0), hoverlabel = list(bgcolor = "#15324f", font = list(color = ink))) |>
     config(displayModeBar = FALSE)
 }
