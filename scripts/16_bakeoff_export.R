@@ -21,5 +21,6 @@ write_csv(tab, file.path(out, "daily.csv"))
 
 fc <- readRDS(Sys.getenv("FC", "data/processed/forecasts_gas.rds")) |> filter(variant == "fuel") |>
   select(date, hour, model, forecast) |> pivot_wider(names_from = model, values_from = forecast)
-dnn <- bind_rows(lapply(list.files(Sys.getenv("DNN", "data/processed/dnn"), full.names = TRUE), readRDS))
-write_csv(left_join(fc, dnn, by = c("date", "hour")), file.path(out, "existing.csv"))
+dnn_files <- list.files(Sys.getenv("DNN", "data/processed/dnn"), full.names = TRUE)
+if (length(dnn_files) > 0) fc <- left_join(fc, bind_rows(lapply(dnn_files, readRDS)), by = c("date", "hour"))
+write_csv(fc, file.path(out, "existing.csv"))

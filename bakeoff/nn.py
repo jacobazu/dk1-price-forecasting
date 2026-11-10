@@ -157,8 +157,11 @@ def tune(kind, data, trials=int(os.environ.get("TRIALS", 25))):
             fh.write(f"{tr.number},{mae:.3f},{len(res)},{json.dumps(cfg)}\n")
         return mae
 
-    st = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=1))
-    st.optimize(objective, n_trials=trials)
+    # kept in a file so a stopped run picks up where it left off
+    st = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=1), study_name=kind,
+                             storage=f"sqlite:///{HERE / f'tune_{kind}.db'}", load_if_exists=True)
+    done = len([t for t in st.trials if t.state.name == "COMPLETE"])
+    st.optimize(objective, n_trials=max(trials - done, 0))
     best = {**BASE, **{k: json.loads(v) for k, v in st.best_params.items()}}
     (HERE / f"chosen_{kind}.json").write_text(json.dumps(best, indent=1))
     print(kind, "best tuning mae", round(st.best_value, 2), best)
