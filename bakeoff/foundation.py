@@ -1,6 +1,7 @@
 # pretrained models on the same test days and rules as nn.py. their weights come from hugging face
 #   python foundation.py chronos2 DATA OUT     chronos-2 (apache 2.0), hourly prices with inputs, no training
 #   python foundation.py tabpfn DATA OUT       tabpfn v2 (open weights), one table per day with the hour as a column
+#   python foundation.py chronos2_plain DATA OUT   chronos-2 on the price series alone; only to see what the inputs add, not a candidate
 # chronos-2 sees the price series up to the day before and, for tomorrow, the weather forecasts, holidays,
 # weekday and gas price; neighbour prices only for the past. tabpfn sees for each hour the same-hour prices
 # 1, 2, 3 and 7 days before, neighbour prices the day before, weather, gas, holiday, weekday, last 365 days
@@ -35,12 +36,14 @@ def hourly(D):
     return H, [s.replace("_d1", "") for s in nb_names], list(wx)
 
 
-def chronos_days(D, days, out, pipe=None, context=24 * 7 * 12):
+def chronos_days(D, days, out, pipe=None, context=24 * 7 * 12, plain=False):
     if pipe is None:
         from chronos import Chronos2Pipeline
         pipe = Chronos2Pipeline.from_pretrained("amazon/chronos-2", device_map="auto")
     H, nbc, wxc = hourly(D)
-    fut_cols = wxc + ["hol", "dow", "gas", "hour"]
+    fut_cols = [] if plain else wxc + ["hol", "dow", "gas", "hour"]   # plain: the price series alone, to see what the inputs add
+    if plain:
+        nbc = []
     for d in days:
         f = out / f"{D['dates'][d]}.json"
         if f.exists():
@@ -51,7 +54,7 @@ def chronos_days(D, days, out, pipe=None, context=24 * 7 * 12):
             continue
         past[nbc] = past[nbc].ffill().fillna(0)
         past["item_id"], fut["item_id"] = "dk1", "dk1"
-        pr = pipe.predict_df(past[["item_id", "timestamp", "price"] + fut_cols + nbc], future_df=fut,
+        pr = pipe.predict_df(past[["item_id", "timestamp", "price"] + fut_cols + nbc], future_df=None if plain else fut,
                              target="price", prediction_length=24, quantile_levels=TAUS)
         q = {str(t): pr[str(t)].round(2).tolist() for t in TAUS}
         f.write_text(json.dumps({"date": str(D["dates"][d]), "forecast": q["0.5"], "q": q}))
@@ -99,4 +102,7 @@ if __name__ == "__main__":
     out.mkdir(parents=True, exist_ok=True)
     t = D["dates"]
     days = [i for i in range(len(t)) if "2025-10-01" <= str(t[i]) <= "2026-11-09"]
-    (chronos_days if kind == "chronos2" else tabpfn_days)(D, days, out)
+    if kind == "tabpfn":
+        tabpfn_days(D, days, out)
+    else:
+        chronos_days(D, days, out, plain=kind == "chronos2_plain")

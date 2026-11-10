@@ -21,6 +21,7 @@ P = pd.read_csv(data / "daily.csv", parse_dates=["date"]).set_index("date")[[f"p
 ex["actual"] = [P.loc[d, f"p_h{h}"] for d, h in zip(ex.date, ex.hour)]
 ex["ens3"] = ex[["bmtx", "learx", "xgbx"]].mean(axis=1)
 cands = {"dnn_r": ex.set_index(["date", "hour"])["dnn"]} if "dnn" in ex else {}
+# *_plain runs only show what the inputs add; they are scored but are not candidates
 for f in sorted(p for p in out.iterdir() if p.is_dir()):
     rows = [json.loads(j.read_text()) for j in f.glob("*.json")]
     cands[f.name] = pd.Series({(pd.Timestamp(r["date"]), h): v for r in rows for h, v in enumerate(r["forecast"])})
@@ -38,7 +39,7 @@ for k in cands:
     res.append((k, alone.mean(), four.mean(), dm((four - base).to_numpy())))
 r = pd.DataFrame(res, columns=["candidate", "mae_alone", "mae_as_4th", "p_vs_today"])
 p = r.p_vs_today.to_numpy()
-ok = ~np.isnan(p)
+ok = ~np.isnan(p) & ~r.candidate.str.endswith("_plain").to_numpy()
 order = np.argsort(p[ok])
 holm = np.empty(ok.sum())
 holm[order] = np.minimum(1, np.maximum.accumulate((ok.sum() - np.arange(ok.sum())) * p[ok][order]))
