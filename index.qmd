@@ -32,7 +32,7 @@ source("R/dashboard_setup.R", local = knitr::knit_global())
 ## Row {height=17%}
 
 ::: {.card}
-<div class="kpi" style="--accent: #f97316">
+<div class="kpi" style="--accent: #1b66ad">
 <div>
 <div class="kpi-label">Average price `r format(latest, "%a %d %b")` (`r main_label`)</div>
 <div class="kpi-value">`r eur(mean(tile_fc[[main]]))`<span class="kpi-unit">€/MWh</span></div>
@@ -65,7 +65,7 @@ source("R/dashboard_setup.R", local = knitr::knit_global())
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #c2410c">
+<div class="kpi" style="--accent: #124d85">
 <div style="width:100%">
 <div class="kpi-label">Last 30 days: inside the 90% range</div>
 `r strip_html`
@@ -91,7 +91,7 @@ p <- plot_ly() |>
             hovertemplate = paste0("%{y:.1f} €/MWh<extra>", format(latest - 1, "%a %d %b"), "</extra>")) |>
   add_lines(data = week_act, x = ~hour, y = ~actual,
             name = paste("Actual last", format(latest - 7, "%a")),
-            line = list(color = "#cfc6bb", width = 2, dash = "dash"),
+            line = list(color = "#c3c8cf", width = 2, dash = "dash"),
             hovertemplate = paste0("%{y:.1f} €/MWh<extra>", format(latest - 7, "%a %d %b"), "</extra>"))
 
 # naive left out
@@ -141,7 +141,7 @@ p |> skip_hover() |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fi
 ## Row {height=14%}
 
 ::: {.card}
-<div class="kpi" style="--accent: #f97316">
+<div class="kpi" style="--accent: #1b66ad">
 <div>
 <div class="kpi-label">Days tracked</div>
 <div class="kpi-value">`r n_distinct(scored_all$date)`</div>
@@ -174,7 +174,7 @@ p |> skip_hover() |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fi
 :::
 
 ::: {.card}
-<div class="kpi" style="--accent: #c2410c">
+<div class="kpi" style="--accent: #124d85">
 <div>
 <div class="kpi-label">`r live_cov_lab` 90% range, live</div>
 <div class="kpi-value">`r live_cov_val`</div>
@@ -230,11 +230,11 @@ if (nrow(scored) == 0) {
                 fillcolor = "rgba(107,114,128,0.12)", name = "90% range", visible = vis, hoverinfo = "skip") |>
       add_polygons(data = up, x = ~time, y = ~y, fillcolor = "rgba(220,38,38,0.45)", line = list(width = 0),
                    name = "Above the range", visible = vis, hoverinfo = "skip") |>
-      add_polygons(data = dn, x = ~time, y = ~y, fillcolor = "rgba(14,165,233,0.45)", line = list(width = 0),
+      add_polygons(data = dn, x = ~time, y = ~y, fillcolor = "rgba(42,157,143,0.45)", line = list(width = 0),
                    name = "Below the range", visible = vis, hoverinfo = "skip") |>
       add_bars(data = days, x = ~time, y = ~up, yaxis = "y2", width = bar_w, marker = list(color = "#dc2626"),
                showlegend = FALSE, visible = vis, hovertemplate = "%{y} hours above<extra></extra>") |>
-      add_bars(data = days, x = ~time, y = ~dn, yaxis = "y2", width = bar_w, marker = list(color = "#0ea5e9"),
+      add_bars(data = days, x = ~time, y = ~dn, yaxis = "y2", width = bar_w, marker = list(color = "#2a9d8f"),
                showlegend = FALSE, visible = vis, hovertemplate = "%{customdata} hours below<extra></extra>",
                customdata = ~-dn) |>
       add_lines(data = b, x = ~time, y = ~f, name = model_labels[[m]], visible = vis,
@@ -245,7 +245,7 @@ if (nrow(scored) == 0) {
   p2 |> chart_layout(models, per_model = 7) |>
     layout(yaxis = list(domain = c(0.3, 1)), barmode = "relative",
            yaxis2 = list(domain = c(0, 0.22), anchor = "x", title = list(text = "Hours outside", font = list(size = 11)),
-                         color = grey, gridcolor = "#f1ebe4", zerolinecolor = "#cfc6bb"))
+                         color = grey, gridcolor = "#eceef1", zerolinecolor = "#c3c8cf"))
 }
 ```
 
@@ -265,7 +265,7 @@ if (nrow(acc_live) > 0) {
           marker = list(color = unname(unlist(model_colors[a$m]))),
           text = ~sprintf("%.0f · %.0f%% of price", mae, pct), textposition = "outside", cliponaxis = FALSE,
           hovertemplate = "%{y}: %{x:.1f} €/MWh<extra></extra>") |>
-    layout(xaxis = list(title = "", range = c(0, max(a$mae) * 1.45), gridcolor = "#f1ebe4"), yaxis = list(title = ""),
+    layout(xaxis = list(title = "", range = c(0, max(a$mae) * 1.45), gridcolor = "#eceef1"), yaxis = list(title = ""),
            margin = list(l = 10, r = 10, t = 5, b = 25), paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",
            font = list(color = grey)) |> config(displayModeBar = FALSE)
 }
@@ -280,7 +280,7 @@ if (nrow(acc_live) > 0) {
           marker = list(color = ifelse(abs(a$bias) <= 5, "#16a34a", ifelse(abs(a$bias) <= 12, "#f59e0b", "#dc2626"))),
           text = ~sprintf("%+.0f", bias), textposition = "outside", cliponaxis = FALSE,
           hovertemplate = "%{y}: %{x:+.1f} €/MWh<extra></extra>") |>
-    layout(xaxis = list(title = "", range = c(-lim, lim), zeroline = TRUE, zerolinecolor = ink, zerolinewidth = 2, gridcolor = "#f1ebe4"),
+    layout(xaxis = list(title = "", range = c(-lim, lim), zeroline = TRUE, zerolinecolor = ink, zerolinewidth = 2, gridcolor = "#eceef1"),
            yaxis = list(title = ""),
            shapes = list(list(type = "rect", x0 = -5, x1 = 5, y0 = -0.5, y1 = nrow(a) - 0.5, fillcolor = "rgba(22,163,74,0.08)", line = list(width = 0), layer = "below")),
            margin = list(l = 10, r = 10, t = 5, b = 25), paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",

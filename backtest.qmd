@@ -144,7 +144,7 @@ if (has_prob) {
 ## Row {height=14%}
 
 ::: {.card}
-<div class="kpi" style="--accent: #f97316">
+<div class="kpi" style="--accent: #1b66ad">
 <div>
 <div class="kpi-label">`r bat_best_label` share of max profit</div>
 <div class="kpi-value">`r bat_share`</div>
@@ -246,7 +246,7 @@ if (!has_risk) {
   plot_ly(rd, x = ~date) |>
     add_lines(y = ~realized, name = "Revenue", line = list(color = orange, width = 1.5),
               hovertemplate = "%{y:,.0f} €<extra>Revenue</extra>") |>
-    add_lines(y = ~floor, name = "95% floor (expected minus VaR)", line = list(color = "#2563eb", width = 1.5),
+    add_lines(y = ~floor, name = "95% floor (expected minus VaR)", line = list(color = "#c2522d", width = 1.5),
               hovertemplate = "%{y:,.0f} €<extra>95% floor</extra>") |>
     add_markers(data = filter(rd, miss), y = ~realized, name = "Below the floor",
                 marker = list(color = ink, size = 8, line = list(color = "#ffffff", width = 2)),
