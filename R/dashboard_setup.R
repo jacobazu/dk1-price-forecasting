@@ -639,8 +639,8 @@ jsonlite::write_json(desk, "desk.json", auto_unbox = TRUE, null = "null")
 zones <- tibble(
   id   = c("DK1", "NO", "SE", "DK2", "DE", "NL", "GB"),
   name = c("DK1", "Norway", "Sweden", "East Denmark", "Germany", "Netherlands", "Great Britain"),
-  x    = c(0, -0.15, 0.95, 1.1, 0.2, -0.95, -1.15),
-  y    = c(0, 1, 0.8, -0.05, -1, -0.8, 0.2),
+  x    = c(0, -0.2, 1.05, 1.25, 0.25, -1.05, -1.3),
+  y    = c(0, 1.1, 0.85, -0.05, -1.1, -0.85, 0.25),
   pcol = c(NA, "price_NO2", "price_SE3", "price_DK2", "price_DE", NA, NA))
 flows <- if (file.exists("live/flows_live.csv")) read_csv("live/flows_live.csv", show_col_types = FALSE) else NULL
 nb_px <- if (file.exists("live/neighbours_live.csv")) read_csv("live/neighbours_live.csv", show_col_types = FALSE) else NULL
@@ -683,9 +683,9 @@ neighbour_map <- function() {
     ann[[length(ann) + 1]] <- list(x = b[1], y = b[2], ax = a[1], ay = a[2], xref = "x", yref = "y", axref = "x", ayref = "y",
                                    showarrow = TRUE, arrowhead = 2, arrowsize = 1.1, arrowwidth = 3,
                                    arrowcolor = "#2fa3b8", text = "")
-    ann[[length(ann) + 1]] <- list(x = zz$x * 0.5, y = zz$y * 0.5, xref = "x", yref = "y", showarrow = FALSE,
-                                   text = sprintf("<b>%s MW %s</b><br>%.0f%% of the cable%s", format(abs(round(f)), big.mark = ","),
-                                                  if (f >= 0) "in" else "out", 100 * u, if (full) ", full" else ""),
+    ann[[length(ann) + 1]] <- list(x = zz$x * 0.6, y = zz$y * 0.6, xref = "x", yref = "y", showarrow = FALSE,
+                                   text = sprintf("<b>%s MW %s</b><br>%.0f%% full", format(abs(round(f)), big.mark = ","),
+                                                  if (f >= 0) "in" else "out", 100 * u),
                                    font = list(size = 11, color = ink), bgcolor = "rgba(12,28,48,0.85)", borderpad = 2)
   }
   p |>
@@ -693,12 +693,16 @@ neighbour_map <- function() {
               marker = list(size = ifelse(z$id == "DK1", 64, 50), color = fill, opacity = 1, line = list(color = "#0c1c30", width = 3)),
               text = ~ifelse(is.na(price), paste0(name, ": no price in the data"), sprintf("%s: %.0f €/MWh", name, price)),
               hovertemplate = "%{text}<extra></extra>") |>
-    add_text(data = z, x = ~x, y = ~y - ifelse(id == "DK1", 0.21, 0.18), showlegend = FALSE, hoverinfo = "skip",
+    # labels on the outer side, away from the cables
+    add_text(data = z |> filter(y <= 0.5), x = ~x, y = ~y - ifelse(id == "DK1", 0.21, 0.18), showlegend = FALSE, hoverinfo = "skip",
              text = ~ifelse(is.na(price), paste0("<b>", name, "</b>"), sprintf("<b>%s</b><br>%.0f €/MWh", name, price)),
              textposition = "bottom center", textfont = list(color = ink, size = 12)) |>
+    add_text(data = z |> filter(y > 0.5), x = ~x, y = ~y + 0.18, showlegend = FALSE, hoverinfo = "skip",
+             text = ~ifelse(is.na(price), paste0("<b>", name, "</b>"), sprintf("<b>%s</b><br>%.0f €/MWh", name, price)),
+             textposition = "top center", textfont = list(color = ink, size = 12)) |>
     layout(annotations = ann, paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)",
            font = list(family = "Instrument Sans, Segoe UI, Helvetica Neue, Arial, sans-serif", color = grey),
-           xaxis = list(visible = FALSE, range = c(-1.6, 1.55)), yaxis = list(visible = FALSE, range = c(-1.5, 1.25), scaleanchor = "x"),
+           xaxis = list(visible = FALSE, range = c(-1.75, 1.7)), yaxis = list(visible = FALSE, range = c(-1.65, 1.7), scaleanchor = "x"),
            margin = list(l = 0, r = 0, t = 0, b = 0), hoverlabel = list(bgcolor = "#15324f", font = list(color = ink))) |>
     config(displayModeBar = FALSE)
 }
@@ -708,7 +712,7 @@ cable_strips <- function(days = 3) {
   f <- flows |> filter(time > nb_time - days(days)) |> mutate(t = with_tz(time, "Europe/Copenhagen"))
   plots <- lapply(cables, \(cb) {
     u <- f[[cb]] / cap[[cb]]
-    plot_ly(x = f$t, y = u, type = "scatter", mode = "lines", fill = "tozeroy", fillcolor = "rgba(27,102,173,0.18)",
+    plot_ly(x = f$t, y = u, type = "scatter", mode = "lines", fill = "tozeroy", fillcolor = "rgba(98,214,232,0.15)",
             line = list(color = "#2fa3b8", width = 1.5), showlegend = FALSE,
             text = sprintf("%s MW %s", format(abs(round(f[[cb]])), big.mark = ","), ifelse(f[[cb]] >= 0, "into DK1", "out of DK1")),
             hovertemplate = "%{x|%a %H:00}: %{text}<extra></extra>") |>
