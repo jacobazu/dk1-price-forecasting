@@ -117,6 +117,21 @@ tryCatch({
 }, error = \(e) message("German weather not updated: ", conditionMessage(e)))
 
 
+# daily gas price (EEX spot index, gas day), for the gas challenger
+tryCatch({
+  file_gas <- "live/gas_live.csv"
+  gas_old <- read_csv(file_gas, col_types = cols(day = col_date(), gas = col_double()))
+  r <- request("https://api.energidataservice.dk/dataset/GasDailyBalancingPrice") |>
+    req_url_query(start = format(max(gas_old$day) - 7), limit = 0) |>
+    req_retry(max_tries = 4, retry_on_failure = TRUE) |>
+    req_perform() |> resp_body_json(simplifyVector = TRUE)
+  gas_new <- tibble(day = as_date(substr(r$records$GasDay, 1, 10)), gas = round(r$records$EEXSpotIndexEUR_MWh, 2))
+  gas_live <- bind_rows(gas_new, gas_old) |> filter(!is.na(gas)) |> distinct(day, .keep_all = TRUE) |> arrange(day)
+  write_csv(gas_live, file_gas)
+  cat("Gas prices:", format(min(gas_live$day)), "to", format(max(gas_live$day)), "\n")
+}, error = \(e) message("Gas prices not updated: ", conditionMessage(e)))
+
+
 # timing check for entso-e wind/solar forecasts, not a model input
 if (nzchar(Sys.getenv("ENTSOE_TOKEN"))) tryCatch(source("scripts/check_entsoe_timing.R", local = new.env()),
                                                  error = \(e) message("ENTSO-E timing check failed: ", conditionMessage(e)))

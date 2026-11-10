@@ -66,6 +66,15 @@ bias <- safe("Bias", \() {
   if (is.null(b)) stop("too few days for the bias") else b$bias
 })[1]
 
+# challenger: ensemble + 4.85 + 0.366 x (gas two days before - its 60 day average)
+# both numbers fitted once on the backtest year (oct 2025 - oct 2026) and frozen; saved, not shown, decided 1 mar 2027
+gas_adj <- safe("Gas", \() {
+  g <- read_csv("live/gas_live.csv", col_types = cols(day = col_date(), gas = col_double())) |>
+    filter(day <= target - 2, day > target - 2 - 60)
+  if (nrow(g) < 40 || max(g$day) < target - 4) stop("gas prices missing")
+  4.85 + 0.366 * (g$gas[g$day == max(g$day)] - mean(g$gas))
+})[1]
+
 naive_day <- features$P[d - 1, ]   # same hour yesterday
 naive_mix <- if (features$dow[d] %in% c(1, 6, 7)) features$P[d - 7, ] else naive_day   # last week mon, sat, sun
 
@@ -81,6 +90,7 @@ new_forecast <- tibble(
 ) |>
   add_ensembles() |>   # NA if one failed
   mutate(ensemble_bc = ensemble + bias,
+         ensemble_gas = ensemble + gas_adj,
          across(starts_with("ensemble"), \(x) round(x, 2)))
 
 # append, never overwrite
