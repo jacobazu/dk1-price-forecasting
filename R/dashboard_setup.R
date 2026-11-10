@@ -439,6 +439,36 @@ violin_xy <- function(m, width = 0.36) {
   }))
 }
 
+# step band between two quantiles, as one closed shape (hour h covers h-0.5 to h+0.5)
+band_xy <- function(m, lo, hi) {
+  f <- fan_wide(m)
+  if (all(is.na(f[[lo]]))) return(tibble(x = NA_real_, y = NA_real_))
+  xs <- as.vector(rbind(f$hour - 0.5, f$hour + 0.5))
+  tibble(x = c(xs, rev(xs), NA), y = c(rep(f[[hi]], each = 2), rev(rep(f[[lo]], each = 2)), NA))
+}
+
+# the hours worth a closer look: cheapest, most expensive and most uncertain, each with its own colour
+key_hours <- function(m) {
+  f <- tomorrow |> select(hour, f = all_of(m)) |> left_join(fan_wide(m), by = "hour") |> filter(!is.na(f))
+  if (nrow(f) == 0 || all(is.na(f$q0.05))) return(NULL)
+  k <- tibble(hour = c(f$hour[which.min(f$f)], f$hour[which.max(f$f)], f$hour[which.max(f$q0.95 - f$q0.05)]),
+              what = c("Cheapest", "Most expensive", "Most uncertain"),
+              col  = c("#0ea5e9", "#f97316", "#7c3aed"))
+  # drop a key hour that sits within two hours of one already kept, so the shapes don't overlap
+  keep <- logical(nrow(k))
+  for (i in seq_len(nrow(k))) keep[i] <- all(abs(k$hour[i] - k$hour[keep]) > 2)
+  left_join(k[keep, ], f, by = "hour")
+}
+
+# one-sided distribution lying on its side to the right of the hour, like the battery's plan chart
+side_xy <- function(m, h, width = 2.2) {
+  x <- fans[[m]] |> filter(hour == h) |> arrange(tau)
+  draws <- approx(x$tau, cummax(x$q), xout = seq(0.05, 0.95, length.out = 300))$y
+  d <- density(draws, adjust = 1.6, from = min(draws), to = max(draws), n = 80)
+  w <- d$y / max(d$y) * width
+  tibble(x = c(h + 0.5, h + 0.5 + w, h + 0.5, NA), y = c(d$x[1], d$x, d$x[80], NA))
+}
+
 line_models <- c(main, setdiff(setdiff(models, "naive_mix"), main))
 
 # each of the last 30 days: how many hours landed inside the 90% range, above it, below it

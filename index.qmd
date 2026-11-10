@@ -104,23 +104,36 @@ for (m in fc_models) {
                                                        q0.05, q0.95, q0.25, q0.75)))
   col <- model_colors[[m]]
   vis <- m == fc_models[1]
+  k <- key_hours(m)
+  # always the same number of traces per model, so the model buttons can switch them
+  dens <- lapply(1:3, \(i) if (!is.null(k) && i <= nrow(k)) side_xy(m, k$hour[i]) else tibble(x = NA_real_, y = NA_real_))
+  dcol <- if (is.null(k)) rep("#999999", 3) else c(k$col, rep("#999999", 3))[1:3]
+  lab  <- if (is.null(k)) tibble(x = NA_real_, y = NA_real_, txt = "", col = "#999999") else
+    tibble(x = k$hour + 0.6, y = k$q0.95, col = k$col,
+           txt = sprintf("<b>%s, %02d:00</b><br>%.0f €/MWh<br>9 in 10: %.0f–%.0f", k$what, k$hour, k$f, k$q0.05, k$q0.95))
   p <- p |>
-    add_lines(data = scen_xy(m), x = ~x, y = ~y, xaxis = "x2", line = list(color = rgba(col, 0.22), width = 1),
-              name = "Possible days", visible = vis, hoverinfo = "skip") |>
-    # on a hidden second x axis, so the shapes don't take over the hover box
-    add_polygons(data = violin_xy(m), x = ~x, y = ~y, xaxis = "x2", fillcolor = rgba(col, 0.20),
-                 line = list(color = rgba(col, 0.6), width = 0.8), name = "Spread per hour",
-                 visible = vis, hoverinfo = "skip") |>
+    add_polygons(data = band_xy(m, "q0.05", "q0.95"), x = ~x, y = ~y, xaxis = "x2", fillcolor = "rgba(31,35,40,0.07)",
+                 line = list(width = 0), name = "9 in 10 days inside", visible = vis, hoverinfo = "skip") |>
+    add_polygons(data = band_xy(m, "q0.25", "q0.75"), x = ~x, y = ~y, xaxis = "x2", fillcolor = "rgba(31,35,40,0.13)",
+                 line = list(width = 0), name = "Half the days inside", visible = vis, hoverinfo = "skip")
+  for (i in 1:3) p <- p |>
+    add_polygons(data = dens[[i]], x = ~x, y = ~y, xaxis = "x2", fillcolor = rgba(dcol[i], 0.22),
+                 line = list(color = dcol[i], width = 1.6), showlegend = FALSE, visible = vis, hoverinfo = "skip")
+  p <- p |>
+    add_text(data = lab, x = ~x, y = ~y, text = ~txt, xaxis = "x2", textposition = "top right",
+             textfont = list(color = lab$col, size = 11), showlegend = FALSE, visible = vis, hoverinfo = "skip") |>
     add_lines(data = d, x = ~hour, y = ~f, text = ~range90,
-              name = paste(model_labels[[m]], format(latest, "%a %d %b")),
-              visible = vis,
-              line = list(color = col, width = 3),
+              name = paste(model_labels[[m]], format(latest, "%a %d %b")), visible = vis,
+              line = list(color = ink, width = 2.6, shape = "hvh"),
               hovertemplate = paste0("%{y:.0f} €/MWh%{text}<extra>", model_labels[[m]], "</extra>"))
 }
 
-p |> skip_hover() |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_model = 3) |>
-  layout(xaxis = list(dtick = 3, range = c(-0.6, 23.6)),
-         xaxis2 = list(overlaying = "x", matches = "x", visible = FALSE))
+p |> skip_hover() |> chart_layout(fc_models, xtitle = "Hour (Danish time)", n_fixed = 2, per_model = 7) |>
+  layout(xaxis = list(dtick = 3, range = c(-0.6, 25.5)),
+         xaxis2 = list(overlaying = "x", matches = "x", visible = FALSE),
+         yaxis = list(range = { r <- range(unlist(lapply(fc_models, \(m) unlist(fan_wide(m)[c("q0.05", "q0.95")]))),
+                                              unlist(tomorrow[fc_models]), today_act$actual, week_act$actual, na.rm = TRUE)
+                                c(r[1] - 0.05 * diff(r), r[2] + 0.22 * diff(r)) }))
 ```
 
 # Track record
