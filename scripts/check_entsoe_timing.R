@@ -11,7 +11,7 @@ types <- c(B16 = "solar", B18 = "wind_offshore", B19 = "wind_onshore")
 
 now    <- Sys.time()
 target <- as_date(with_tz(now, "Europe/Copenhagen")) + 1
-from   <- with_tz(as_datetime(paste(target, "00:00"), tz = "Europe/Copenhagen"), "UTC")
+from   <- with_tz(ymd_hm(paste(target, "00:00"), tz = "Europe/Copenhagen"), "UTC")
 to     <- from + days(1)
 
 count_points <- function(area) {
