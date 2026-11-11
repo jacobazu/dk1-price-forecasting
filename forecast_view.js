@@ -1,4 +1,4 @@
-// forecast page: the forecast as a line with its likely range as a band. data from R/forecast_view.R
+// forecast page: the forecast as steps with its range, and how likely each price is per part of the day. data from R/forecast_view.R
 (function () {
   const D = JSON.parse(document.getElementById("fv-data").textContent), root = document.getElementById("fv");
   const taus = Array.from({ length: 19 }, (_, i) => 0.05 + 0.05 * i), n = 24;
@@ -7,14 +7,14 @@
   let cur = D.main;
 
   // density from the 19 quantiles: points spread evenly over 5-95%, gaussian kernel
-  function dens(q, m) {
+  function dens(q, m, pad = 0) {
     const dr = [];
     for (let i = 0; i < 200; i++) {
       const t = 0.05 + 0.9 * i / 199, k = Math.min(17, Math.floor((t - 0.05) / 0.05 + 1e-9));
       dr.push(q[k] + (t - taus[k]) / 0.05 * (q[k + 1] - q[k]));
     }
     const mu = dr.reduce((a, b) => a + b) / 200, sd = Math.sqrt(dr.reduce((a, b) => a + (b - mu) ** 2, 0) / 200);
-    const bw = Math.max(1, 0.4 * sd), lo = q[0], hi = q[18], out = [];
+    const bw = Math.max(1, 0.4 * sd), lo = q[0] - pad * (q[18] - q[0]), hi = q[18] + pad * (q[18] - q[0]), out = [];
     for (let j = 0; j < m; j++) {
       const y = lo + (hi - lo) * j / (m - 1); let s = 0;
       for (const x of dr) s += Math.exp(-0.5 * ((y - x) / bw) ** 2);
@@ -32,28 +32,57 @@
     return p;
   }
 
-  // one line for the forecast, a soft band for the likely range: darker 50%, lighter 90%
+  // like the battery page: the forecast as steps with its 90% range, a sideways curve for each part of the day
+  // (the hatched end: the dearest 1 in 20), and the day's average on the right. the page has a range per hour, not
+  // whole-day paths, so a block's curve treats its hours as moving together (close for neighbouring hours, a bit wide)
+  const BLOCKS = [["Night", 0, 6], ["Morning", 6, 10], ["Day", 10, 17], ["Evening", 17, 24]];
+  const avgq = (Q, a, b) => Q[0].map((_, k) => { let t = 0; for (let h = a; h < b; h++) t += Q[h][k]; return t / (b - a); });
+  function side(dd, X0, wid, y, col, cut, id) {
+    // dd: [[price, 0..1]], drawn to the right of X0
+    const pts = dd.map(o => [X0 + wid * o[1], y(o[0])]);
+    const out = `M${X0},${y(dd[0][0])}` + pts.map(p => `L${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("") + `L${X0},${y(dd[dd.length - 1][0])}Z`;
+    const hot = dd.filter(o => o[0] >= cut), hp = hot.length > 1 ? `M${X0},${y(hot[0][0])}` + hot.map(o => `L${(X0 + wid * o[1]).toFixed(1)},${y(o[0]).toFixed(1)}`).join("") + `L${X0},${y(hot[hot.length - 1][0])}Z` : "";
+    return `<path d="${out}" fill="${col}" fill-opacity=".16" stroke="${col}" stroke-width="1.5"/>` + (hp ? `<path d="${hp}" fill="url(#${id})"/>` : "");
+  }
   function main(M) {
     const f = M.mean, Q = M.q, pk = f.indexOf(Math.max(...f));
-    const all = Q ? Q.flat().concat(f) : f, span = Math.max(...all) - Math.min(0, ...all);
+    // room for the curves' tails (they run 20% past the 90% range) and the labels above
+    const all = Q ? Q.flatMap(r => [r[0] - 0.2 * (r[18] - r[0]), r[18] + 0.2 * (r[18] - r[0])]).concat(f) : f, span = Math.max(...all) - Math.min(0, ...all);
     const st = [25, 50, 100, 200, 500].find(v => span / v <= 5) || 1000;   // round steps, at most 5 of them
     const top = Math.max(st, Math.ceil(Math.max(...all) / st) * st), bot = Math.min(0, Math.floor(Math.min(...all) / st) * st);
-    const W = 1190, H = 440, L = 44, R = 16, T = 24, B = 36, y = p => T + (H - T - B) * (1 - (p - bot) / (top - bot)), cw = (W - L - R) / n, x = h => L + cw * (h + .5);
-    const path = (v) => v.map((p, h) => `${h ? "L" : "M"}${x(h).toFixed(1)},${y(p).toFixed(1)}`).join("");
-    const band = (lo, hi) => path(hi) + v2(lo) + "Z", v2 = v => v.map((p, h) => h).reverse().map(h => `L${x(h).toFixed(1)},${y(v[h]).toFixed(1)}`).join("");
-    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast price per hour with its range">`;
-    for (let g = bot; g <= top + 1e-9; g += st) s += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "#a8a29e" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
+    const W = 1190, H = 480, L = 44, PW = Q ? 210 : 0, R = 16 + PW, T = Q ? 62 : 24, B = 36;
+    const y = p => T + (H - T - B) * (1 - (p - bot) / (top - bot)), cw = (W - L - R) / n, xs = h => L + cw * h, x = h => xs(h) + cw / 2;
+    const steps = v => v.map((p, h) => `${h ? "L" : "M"}${xs(h).toFixed(1)},${y(p).toFixed(1)}L${xs(h + 1).toFixed(1)},${y(p).toFixed(1)}`).join("");
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast price per hour with its range"><defs>
+      <pattern id="fvh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="${amber}" fill-opacity=".10"/><line x1="0" y1="0" x2="0" y2="6" stroke="${amber}" stroke-width="2"/></pattern></defs>`;
+    for (let g = bot; g <= top + 1e-9; g += st) s += `<line x1="${L}" x2="${W - 16}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "#a8a29e" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
     if (Q) {
-      const qs = k => Q.map(r => r[k]);
-      s += `<path d="${band(qs(0), qs(18))}" fill="${aqua}" fill-opacity=".13"/>`;
-      s += `<path d="${band(qs(4), qs(14))}" fill="${aqua}" fill-opacity=".22"/>`;
+      const hi = Q.map(r => r[18]), lo = Q.map(r => r[0]);
+      let bd = "";
+      for (let h = 0; h < n; h++) bd += `${h ? "L" : "M"}${xs(h).toFixed(1)},${y(hi[h]).toFixed(1)}L${xs(h + 1).toFixed(1)},${y(hi[h]).toFixed(1)}`;
+      for (let h = n - 1; h >= 0; h--) bd += `L${xs(h + 1).toFixed(1)},${y(lo[h]).toFixed(1)}L${xs(h).toFixed(1)},${y(lo[h]).toFixed(1)}`;
+      s += `<path d="${bd}Z" fill="${ink}" fill-opacity=".06"/>`;
+      // a curve per part of the day
+      for (const [name, a, b] of BLOCKS) {
+        const q = avgq(Q, a, b), dd = dens(q, 70, 0.2).filter(o => o[1] > 0.02), cut = q[17];   // 95% quantile: 1 in 20 above
+        s += `<line x1="${xs(a)}" x2="${xs(a)}" y1="${T}" y2="${H - B}" stroke="${grid}"/>`;
+        s += side(dd, xs(a) + 4, cw * Math.min(2.4, (b - a) * 0.75), y, aqua, cut, "fvh");
+        s += `<text x="${xs(a) + 6}" y="14" fill="${ink}" class="fv-b">${name}</text><text x="${xs(a) + 6}" y="30" fill="${mute}" class="fv-s">about ${r0(q[9])}</text><text x="${xs(a) + 6}" y="45" fill="${amber}" class="fv-s">1 in 20 > ${r0(cut)}</text>`;
+      }
+      // the day's average on the right
+      const qd = avgq(Q, 0, n), dd = dens(qd, 70, 0.2).filter(o => o[1] > 0.02), X0 = W - PW + 18, cut = qd[17];
+      s += `<line x1="${W - PW}" x2="${W - PW}" y1="${T}" y2="${H - B}" stroke="#e7e5e4"/>`;
+      s += side(dd, X0, PW - 40, y, aqua, cut, "fvh");
+      s += `<line x1="${X0}" x2="${X0 + (PW - 40) * 0.98}" y1="${y(qd[9])}" y2="${y(qd[9])}" stroke="${ink}" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+      s += `<text x="${X0}" y="14" fill="${ink}" class="fv-b">Day average</text><text x="${X0}" y="30" fill="${mute}" class="fv-s">about ${r0(qd[9])} €/MWh</text>`;
+      s += `<text x="${X0}" y="45" fill="${amber}" class="fv-s">1 in 20 above ${r0(cut)}</text>`;
     }
-    s += `<path d="${path(f)}" fill="none" stroke="${ink}" stroke-width="2.2" stroke-linejoin="round"/>`;
+    s += `<path d="${steps(f)}" fill="none" stroke="${ink}" stroke-width="2.2"/>`;
     s += `<circle cx="${x(pk)}" cy="${y(f[pk])}" r="5" fill="${amber}" stroke="#fff" stroke-width="2"/>`;
-    s += `<text x="${x(pk)}" y="${y(Q ? Q[pk][18] : f[pk]) - 10}" text-anchor="middle" class="fv-v" fill="${amber}">${r0(f[pk])}</text>`;
+    s += `<text x="${x(pk)}" y="${y(f[pk]) - 12}" text-anchor="middle" class="fv-v" fill="${amber}">${r0(f[pk])}</text>`;
     for (let h = 0; h < n; h++) {
-      if (h % 3 == 0) s += `<text x="${x(h)}" y="${H - 10}" text-anchor="middle" fill="${mute}">${hh(h)}:00</text>`;
-      s += `<rect class="fv-hit" data-h="${h}" x="${x(h) - cw / 2}" width="${cw}" y="${T}" height="${H - T}" fill="transparent"/>`;
+      if (h % 3 == 0) s += `<text x="${xs(h)}" y="${H - 10}" text-anchor="middle" fill="${mute}">${hh(h)}</text>`;
+      s += `<rect class="fv-hit" data-h="${h}" x="${xs(h)}" width="${cw}" y="${T}" height="${H - T}" fill="transparent"/>`;
     }
     return s + "</svg>";
   }
@@ -96,7 +125,7 @@
       <div class="fv-num"><b>${r0(f[lw])}</b>lowest, ${hh(lw)}:00</div><div class="fv-num"><b>${D.neg}</b>chance of a negative price</div></div>
       ${keys.length > 1 ? `<div class="fv-pills">${keys.map(k => `<button data-m="${k}" class="${k == cur ? "on" : ""}">${D.models[k].label}</button>`).join("")}</div>` : ""}
       <div class="fv-chart">${main(M)}<div class="fv-tip" hidden></div></div>
-      ${M.q ? `<div class="fv-key"><span><i style="background:${ink};height:2px"></i>forecast</span><span><i style="background:${aqua};opacity:.45"></i>half the time in here</span><span><i style="background:${aqua};opacity:.2"></i>9 times in 10</span></div>` : ""}
+      ${M.q ? `<div class="fv-key"><span><i style="background:${ink};height:2px"></i>forecast</span><span><i style="background:${ink};opacity:.08"></i>9 times in 10 inside</span><span><i style="background:${aqua};opacity:.35"></i>how likely each price is</span><span><i style="background:repeating-linear-gradient(45deg,${amber} 0 2px,#fff 2px 5px)"></i>dearest 1 in 20</span></div>` : ""}
       <div class="fv-low"><div class="fv-pane">${unc == null ? "<h2>No range yet</h2>" : `<h2>${hh(unc)}:00, the least certain hour</h2><p>Half the time below ${r0(M.q[unc][9])} €/MWh</p>${one(M, unc)}`}</div>
       <div class="fv-pane"><h2>Hours inside the range</h2><p>Per day, out of 24. Pale: fewer than 8 in 10</p>${daybars(M)}</div>
       <div class="fv-pane"><h2>Last 30 days, ${D.models[D.main].label}</h2><p>Dot: where it is. Line: the aim</p>${D.checks.map(meter).join("")}</div></div>`;
