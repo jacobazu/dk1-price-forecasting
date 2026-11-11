@@ -640,7 +640,7 @@ desk <- list(
     list(name = "Error cut vs naive", value = sprintf("%.0f%%", 100 * desk_skill), x = round(100 * desk_skill, 1), aim = 51, lo = 0, hi = 100,
          light = if (desk_skill >= 0.4) "green" else if (desk_skill >= 0.2) "amber" else "red")))
 desk$checks <- Filter(Negate(is.null), desk$checks)
-jsonlite::write_json(desk, "desk.json", auto_unbox = TRUE, null = "null")
+jsonlite::write_json(desk, "desk.json", auto_unbox = TRUE, null = "null", na = "null")
 
 # --- neighbours: dk1's six cables and the prices around it -------------------------------------------------
 zones <- tibble(
