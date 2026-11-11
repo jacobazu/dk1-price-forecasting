@@ -1,6 +1,6 @@
 # live challengers from the model comparison, run each morning after the R forecast:
 #   chronos-2 with inputs (no training) and the plain pytorch network (chosen_mlp.json, refit from scratch each day),
-# both exactly as they ran in the backtest. appended to forecasts/challengers_py.csv, never overwritten.
+# both exactly as they ran in the backtest, and timestral (mistral, added 11 nov 2026) with the same inputs as chronos-2. appended to forecasts/challengers_py.csv, never overwritten.
 #   python bakeoff/live.py DAILY.csv
 # DAILY.csv is written by scripts/05_forecast_tomorrow.R; its last row is tomorrow, with no prices yet
 import json, os, sys
@@ -36,6 +36,13 @@ def main(path):
         row["chronos2"] = json.loads((tmp / f"{target}.json").read_text())["forecast"]
     except Exception as e:
         print("chronos-2 failed:", e)
+    try:
+        from foundation import timestral_days
+        tmp = Path("tmp_py/timestral"); tmp.mkdir(parents=True, exist_ok=True)
+        timestral_days(D, [d], tmp)
+        row["timestral"] = json.loads((tmp / f"{target}.json").read_text())["forecast"]
+    except Exception as e:
+        print("timestral failed:", e)
     try:
         import torch
         torch.set_num_threads(os.cpu_count() or 2)

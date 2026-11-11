@@ -60,6 +60,32 @@ def chronos_days(D, days, out, pipe=None, context=24 * 7 * 12, plain=False):
         f.write_text(json.dumps({"date": str(D["dates"][d]), "forecast": q["0.5"], "q": q}))
 
 
+def timestral_days(D, days, out, model=None, context=24 * 7 * 12):
+    """timestral (mistral, nov 2026) with the same inputs and window as chronos-2: past prices and neighbour prices,
+    and for tomorrow weather, holidays and gas; weekday and hour as categories. no training"""
+    if model is None:
+        from timestral import TimestralForecaster
+        model = TimestralForecaster.from_pretrained("mistralai/Timestral-209M")
+    H, nbc, wxc = hourly(D)
+    known_num = wxc + ["hol", "gas"]
+    for d in days:
+        f = out / f"{D['dates'][d]}.json"
+        if f.exists():
+            continue
+        past = H[(H.day < d) & (H.day >= d - context // 24)]
+        both = H[(H.day < d + 1) & (H.day >= d - context // 24)]
+        if past.price.isna().any() or H[H.day == d][known_num].isna().any().any():
+            continue
+        fc = model.forecast(past.price.to_numpy(float)[None, None], prediction_length=24,
+                            past_covariates=past[nbc].to_numpy(float).T[None],
+                            known_covariates=both[known_num].to_numpy(float).T[None],
+                            categorical_known_covariates=both[["dow", "hour"]].to_numpy(float).T[None])
+        lv = [round(x, 2) for x in fc.quantile_levels]
+        qs = fc.quantiles[0, 0].numpy()   # 24 x levels
+        q = {str(t): np.round(qs[:, lv.index(t)], 2).tolist() for t in TAUS if t in lv}
+        f.write_text(json.dumps({"date": str(D["dates"][d]), "forecast": np.round(fc.median[0, 0].numpy(), 2).tolist(), "q": q}))
+
+
 def tabpfn_days(D, days, out, model=None, window=365):
     if model is None:
         from tabpfn import TabPFNRegressor
@@ -102,7 +128,9 @@ if __name__ == "__main__":
     out.mkdir(parents=True, exist_ok=True)
     t = D["dates"]
     days = [i for i in range(len(t)) if "2025-10-01" <= str(t[i]) <= "2026-11-09"]
-    if kind == "tabpfn":
+    if kind == "timestral":
+        timestral_days(D, days, out)
+    elif kind == "tabpfn":
         tabpfn_days(D, days, out)
     else:
         chronos_days(D, days, out, plain=kind == "chronos2_plain")
