@@ -648,7 +648,7 @@ zones <- tibble(
   name = c("DK1", "Norway", "Sweden", "East Denmark", "Germany", "Netherlands", "Great Britain"),
   x    = c(0, -0.2, 1.05, 1.25, 0.25, -1.05, -1.3),
   y    = c(0, 1.1, 0.85, -0.05, -1.1, -0.85, 0.25),
-  pcol = c(NA, "price_NO2", "price_SE3", "price_DK2", "price_DE", NA, NA))
+  pcol = c(NA, "price_NO2", "price_SE3", "price_DK2", "price_DE", "price_NL", NA))
 flows <- if (file.exists("live/flows_live.csv")) read_csv("live/flows_live.csv", show_col_types = FALSE) else NULL
 nb_px <- if (file.exists("live/neighbours_live.csv")) read_csv("live/neighbours_live.csv", show_col_types = FALSE) else NULL
 has_nb <- !is.null(flows) && nrow(flows) >= 24 && !is.null(nb_px)
@@ -658,11 +658,14 @@ if (has_nb) {
   nb_time <- max(flows$time)   # the newest hour with flows
   nb_now  <- flows[flows$time == nb_time, ]
   nb_lab  <- format(with_tz(nb_time, "Europe/Copenhagen"), "%a %d %b %H:00")
-  dk1_px  <- actual |> mutate(time = with_tz(force_tz(as_datetime(date) + hours(hour), "Europe/Copenhagen"), "UTC"))
+  # dk1's price from the same live file family as the neighbours, so both cover the same hours
+  dk1_px  <- if (file.exists("live/prices_dk1_live.csv")) read_csv("live/prices_dk1_live.csv", show_col_types = FALSE) |>
+               transmute(time, actual = price) else
+             actual |> mutate(time = with_tz(force_tz(as_datetime(date) + hours(hour), "Europe/Copenhagen"), "UTC"))
   px_at   <- function(t) {
     n <- nb_px[nb_px$time == t, ]
     c(DK1 = dk1_px$actual[match(t, dk1_px$time)],
-      sapply(setNames(zones$pcol[-1], zones$id[-1]), \(col) if (is.na(col) || nrow(n) == 0) NA_real_ else n[[col]][1]))
+      sapply(setNames(zones$pcol[-1], zones$id[-1]), \(col) if (is.na(col) || nrow(n) == 0 || !col %in% names(n)) NA_real_ else n[[col]][1]))
   }
   nb_price <- px_at(nb_time)
 }
@@ -704,7 +707,8 @@ neighbour_map <- function() {
   p |>
     add_trace(data = z, x = ~x, y = ~y, type = "scatter", mode = "markers", showlegend = FALSE,
               marker = list(size = ifelse(z$id == "DK1", 74, 58), color = fill, opacity = 1, line = list(color = "#ffffff", width = 3)),
-              text = ~ifelse(is.na(price), paste0(name, ": no price in the data"), sprintf("%s: %.0f €/MWh", name, price)),
+              text = ~ifelse(id == "GB", "Great Britain: own auction, outside the EU market coupling since Brexit",
+                             ifelse(is.na(price), paste0(name, ": no price in the data"), sprintf("%s: %.0f €/MWh", name, price))),
               hovertemplate = "%{text}<extra></extra>") |>
     # one label per country, on the outer side: name, price and what its cable carries
     add_text(data = lab, x = ~lx, y = ~ly, text = ~txt, textposition = ~pos, showlegend = FALSE, hoverinfo = "skip",

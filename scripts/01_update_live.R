@@ -81,6 +81,44 @@ tryCatch({
 }, error = \(e) message("Neighbour prices not updated: ", conditionMessage(e)))
 
 
+# the netherlands' day-ahead price from entso-e (not on energi data service), added to the neighbour file. may fail
+tryCatch({
+  if (Sys.getenv("ENTSOE_TOKEN") == "") stop("no ENTSOE_TOKEN")
+  file_nb <- "live/neighbours_live.csv"
+  nb_live <- read_csv(file_nb, col_types = cols(time = col_datetime(), .default = col_double()))
+  from_nl <- if ("price_NL" %in% names(nb_live) && any(!is.na(nb_live$price_NL))) max(nb_live$time[!is.na(nb_live$price_NL)]) - days(2) else min(nb_live$time)
+  to_nl   <- floor_date(Sys.time(), "day") + days(2)
+  nl <- list()
+  for (st in seq(floor_date(from_nl, "day"), to_nl - days(1), by = "30 days")) {   # the api takes up to a year, 30 days keeps answers small
+    st <- as_datetime(st); en <- min(st + days(30), to_nl)
+    txt <- httr2::request("https://web-api.tp.entsoe.eu/api") |>
+      httr2::req_url_query(securityToken = Sys.getenv("ENTSOE_TOKEN"), documentType = "A44",
+                           in_Domain = "10YNL----------L", out_Domain = "10YNL----------L",
+                           periodStart = format(st, "%Y%m%d%H%M", tz = "UTC"), periodEnd = format(en, "%Y%m%d%H%M", tz = "UTC")) |>
+      httr2::req_timeout(60) |> httr2::req_perform() |> httr2::resp_body_string()
+    for (p in regmatches(txt, gregexpr("(?s)<Period>.*?</Period>", txt, perl = TRUE))[[1]]) {
+      start <- ymd_hm(regmatches(p, regexpr("(?<=<start>)[^<]*", p, perl = TRUE)), tz = "UTC")
+      mins  <- if (grepl("PT15M", p)) 15 else 60
+      pts   <- regmatches(p, gregexpr("(?s)<Point>.*?</Point>", p, perl = TRUE))[[1]]
+      pos   <- as.integer(sub("(?s).*<position>([0-9]+)</position>.*", "\\1", pts, perl = TRUE))
+      amt   <- as.numeric(sub("(?s).*<price.amount>([-0-9.]+)</price.amount>.*", "\\1", pts, perl = TRUE))
+      # positions can skip repeated prices (curve type a03), so fill forward over the period
+      n_all <- max(pos); full <- rep(NA_real_, n_all); full[pos] <- amt
+      for (i in seq_along(full)[-1]) if (is.na(full[i])) full[i] <- full[i - 1]
+      nl[[length(nl) + 1]] <- tibble(time = start + minutes(mins * (seq_len(n_all) - 1)), price = full)
+    }
+  }
+  nl <- bind_rows(nl) |> mutate(time = floor_date(time, "hour")) |> group_by(time) |>
+    summarise(price_NL = mean(price), .groups = "drop")
+  if (!nrow(nl)) stop("no prices in the answer")
+  nb_live <- nb_live |> select(-any_of("price_NL")) |>
+    left_join(bind_rows(nl, if ("price_NL" %in% names(read_csv(file_nb, n_max = 1, show_col_types = FALSE)))
+                              read_csv(file_nb, show_col_types = FALSE) |> select(time, price_NL) else NULL) |>
+                distinct(time, .keep_all = TRUE), by = "time")
+  write_csv(nb_live, file_nb)
+  cat("Netherlands prices:", sum(!is.na(nb_live$price_NL)), "hours\n")
+}, error = \(e) message("Netherlands prices not updated: ", conditionMessage(e)))
+
 # open-meteo, made 48h ahead
 tryCatch({
   source("R/weather.R")
