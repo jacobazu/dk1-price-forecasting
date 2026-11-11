@@ -44,7 +44,7 @@ source("R/dashboard_setup.R", local = knitr::knit_global())
 <div>
 <div class="kpi-label">Days tracked</div>
 <div class="kpi-value">`r n_distinct(scored_all$date)`</div>
-<div class="kpi-sub">`r if (nrow(scored_all) > 0) paste("since", format(min(scored_all$date), "%d %b %Y")) else "starts after the first forecast day"`</div>
+<div class="kpi-sub">`r if (nrow(scored_all) > 0) paste0("since ", format(min(scored_all$date), "%d %b %Y"), star_note(unique(scored_all$date))) else "starts after the first forecast day"`</div>
 </div>
 <div class="kpi-icon"><i class="bi bi-calendar-check-fill"></i></div>
 </div>
@@ -141,8 +141,12 @@ if (nrow(scored) == 0) {
                 hovertemplate = paste0("%{y:.1f} €/MWh<extra>", model_labels[[m]], "</extra>"))
   }
 
+  bf <- backfilled |> filter(date %in% sc$date)
+  stars <- lapply(seq_len(nrow(bf)), \(i) list(
+    x = as_datetime(bf$date[i], tz = "Europe/Copenhagen") + hours(12), y = 1, yref = "paper", text = "*",
+    showarrow = FALSE, font = list(size = 20, color = ink), hovertext = paste("Backfilled:", bf$reason[i])))
   p2 |> chart_layout(models, per_model = 7) |>
-    layout(yaxis = list(domain = c(0.3, 1)), barmode = "relative",
+    layout(yaxis = list(domain = c(0.3, 1)), barmode = "relative", annotations = stars,
            yaxis2 = list(domain = c(0, 0.22), anchor = "x", title = list(text = "Hours outside", font = list(size = 11)),
                          color = grey, gridcolor = "#f0ece8", zerolinecolor = "#d6d3d1"))
 }

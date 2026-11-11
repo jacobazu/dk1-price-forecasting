@@ -33,6 +33,13 @@ fc <- read_csv("forecasts/forecasts_live.csv",
                col_types = cols(forecast_made_utc = col_character(), date = col_date(),
                                 hour = col_integer(), .default = col_double()))
 
+# days made after the fact because the live run failed, marked with a star wherever they show
+backfilled <- if (file.exists("forecasts/backfilled.csv")) read_csv("forecasts/backfilled.csv", show_col_types = FALSE, col_types = cols(date = col_date(), .default = col_character())) else tibble(date = as_date(character()), reason = character())
+star_note  <- function(dates) {
+  b <- backfilled |> filter(date %in% dates)
+  if (nrow(b) == 0) "" else sprintf(", %d backfilled*", nrow(b))
+}
+
 latest    <- max(fc$date)
 tomorrow  <- fc |> filter(date == latest)
 today_act <- actual |> filter(date == latest - 1)
