@@ -23,27 +23,30 @@ ex["ens3"] = ex[["bmtx", "learx", "xgbx"]].mean(axis=1)
 cands = {"dnn_r": ex.set_index(["date", "hour"])["dnn"]} if "dnn" in ex else {}
 # *_plain runs only show what the inputs add; they are scored but are not candidates
 for f in sorted(p for p in out.iterdir() if p.is_dir()):
-    rows = [json.loads(j.read_text()) for j in f.glob("*.json")]
+    rows = [r for r in (json.loads(j.read_text()) for j in f.glob("*.json")) if "skip" not in r]
     cands[f.name] = pd.Series({(pd.Timestamp(r["date"]), h): v for r in rows for h, v in enumerate(r["forecast"])})
 df = ex.set_index(["date", "hour"])
 for k, s in cands.items():
     df[k] = s
-days = df.dropna().index.get_level_values(0).unique()
-df = df.loc[days]
-print(len(days), "common days,", len(cands), "candidates;", {k: int(s.notna().sum() / 24) for k, s in cands.items()}, "days each")
+df = df.dropna(subset=["actual", "bmtx", "learx", "xgbx"])
 day = lambda f: (df["actual"] - f).abs().groupby(level=0).mean()
 base = day(df.ens3)
-res = [("ensemble today (3 models)", base.mean(), np.nan, np.nan)]
+# each candidate against today's ensemble on the days it has
+res = [("ensemble today (3 models)", len(base), base.mean(), np.nan, np.nan, np.nan)]
 for k in cands:
-    alone, four = day(df[k]), day(df[["bmtx", "learx", "xgbx", k]].mean(axis=1))
-    res.append((k, alone.mean(), four.mean(), dm((four - base).to_numpy())))
-r = pd.DataFrame(res, columns=["candidate", "mae_alone", "mae_as_4th", "p_vs_today"])
+    have = df[k].notna().groupby(level=0).all()
+    have = have[have].index
+    alone = day(df[k]).loc[have]
+    four = day(df[["bmtx", "learx", "xgbx", k]].mean(axis=1, skipna=False)).loc[have]
+    b = base.loc[four.index]
+    res.append((k, len(four), alone.mean(), b.mean(), four.mean(), dm((four - b).to_numpy())))
+r = pd.DataFrame(res, columns=["candidate", "days", "mae_alone", "today_same_days", "mae_as_4th", "p_vs_today"])
 p = r.p_vs_today.to_numpy()
 ok = ~np.isnan(p) & ~r.candidate.str.endswith("_plain").to_numpy()
 order = np.argsort(p[ok])
 holm = np.empty(ok.sum())
 holm[order] = np.minimum(1, np.maximum.accumulate((ok.sum() - np.arange(ok.sum())) * p[ok][order]))
 r.loc[ok, "p_holm"] = holm
-r["passes"] = (r.mae_as_4th < base.mean()) & (r.p_holm < 0.05)
+r["passes"] = (r.mae_as_4th < r.today_same_days) & (r.p_holm < 0.05)
 print(r.round(4).to_string(index=False))
 r.to_csv(out / "comparison.csv", index=False)
