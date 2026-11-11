@@ -321,12 +321,19 @@ challenger_start    <- as_date("2026-10-14")
 challenger_decision <- as_date("2027-03-01")
 challengers <- c(ensemble_bc = "Bias-corrected", ensemble_gas = "Gas-corrected",
                  ensemble_fuel = "Gas in the models", ensemble_fuel_bc = "Gas in the models, bias-corrected",
-                 ensemble_fuel_4y = "Gas in the models, LEAR-X scaled over 4 years")
+                 ensemble_fuel_4y = "Gas in the models, LEAR-X scaled over 4 years",
+                 ensemble_chronos = "Gas in the models plus Chronos-2",
+                 ensemble_nnmix = "Chronos-2 and the PyTorch network")
 # each challenger's own start; holm only within the challengers that started together, so a later one
 # doesn't change the rule for an earlier one
 ch_start <- c(ensemble_bc = as_date("2026-10-14"), ensemble_gas = as_date("2026-11-11"),
               ensemble_fuel = as_date("2026-11-12"), ensemble_fuel_bc = as_date("2026-11-12"),
-              ensemble_fuel_4y = as_date("2026-11-12"))
+              ensemble_fuel_4y = as_date("2026-11-12"),
+              ensemble_chronos = as_date("2026-11-13"), ensemble_nnmix = as_date("2026-11-13"))
+# the two from the model comparison (jacobazu/dk1-model-comparison) also get one early check, fixed 11 nov 2026
+# before any live day: on 15 dec 2026 they replace the ensemble if the holm p-value is below 0.01, otherwise
+# they run on to 1 mar 2027 under the usual rule
+ch_early <- c(ensemble_chronos = as_date("2026-12-15"), ensemble_nnmix = as_date("2026-12-15"))
 
 bt_ch <- read_csv("results/backtest_forecasts.csv", show_col_types = FALSE) |> add_ensembles()
 bc_bt <- postprocess(transmute(bt_ch, date, hour, actual, ensemble), "ensemble") |>
@@ -338,6 +345,15 @@ live_ch <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE,
                                      hour = col_integer(), .default = col_double())) |>
   filter(date < challenger_decision) |>
   inner_join(actual, by = c("date", "hour"))
+# python challengers (bakeoff/live.py), saved next to the forecast before the auction
+if (file.exists("forecasts/challengers_py.csv")) {
+  py <- read_csv("forecasts/challengers_py.csv", show_col_types = FALSE,
+                 col_types = cols(forecast_made_utc = col_character(), date = col_date(), hour = col_integer(), .default = col_double()))
+  for (m in c("chronos2", "torch_plain")) if (!m %in% names(py)) py[[m]] <- NA_real_
+  live_ch <- live_ch |>
+    left_join(select(py, date, hour, chronos2, torch_plain), by = c("date", "hour")) |>
+    mutate(ensemble_chronos = (3 * ensemble_fuel + chronos2) / 4, ensemble_nnmix = (torch_plain + chronos2) / 2)
+}
 
 compare <- function(x, ch) {
   if (!ch %in% names(x)) return(tibble(days = 0L))
@@ -366,7 +382,10 @@ challenger_tbl <- challenger_tbl |>
   mutate(live_p_holm = p.adjust(live_p, "holm")) |>
   ungroup() |>
   mutate(
-         status = case_when(Sys.Date() < challenger_decision ~ "running",
+         early = ch_early[challenger],
+         status = case_when(!is.na(early) & Sys.Date() >= early & Sys.Date() < challenger_decision &
+                              !is.na(live_p_holm) & live_diff < 0 & live_p_holm < 0.01 ~ "replaces the ensemble (early check)",
+                            Sys.Date() < challenger_decision ~ "running",
                             !is.na(live_p_holm) & live_diff < 0 & live_p_holm < 0.05 ~ "replaces the ensemble",
                             TRUE ~ "ensemble kept"),
          decision = challenger_decision)

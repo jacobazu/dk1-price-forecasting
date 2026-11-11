@@ -13,3 +13,4 @@ backtest_files/
 .Renviron
 stale.html
 desk.json
+tmp_py/

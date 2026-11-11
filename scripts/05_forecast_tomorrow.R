@@ -79,6 +79,16 @@ gas_adj <- safe("Gas", \() {
 # plus the 28 day median error of that ensemble once it has a month of live days. decided 1 mar 2027
 exog$fuel <- make_fuel(daily$date, read_csv("live/gas_live.csv", col_types = cols(day = col_date(), gas = col_double())))
 fuel_groups <- c(groups, "fuel")
+
+# inputs for the python challengers (bakeoff/live.py), in the same layout as scripts/16_bakeoff_export.R. not committed
+local({
+  P <- features$P; colnames(P) <- paste0("p_h", 0:23)
+  pre <- \(g) { x <- exog[[g]]; colnames(x) <- paste0(g, ":", colnames(x)); x }
+  tab <- bind_cols(tibble(date = daily$date, dow = features$dow), as_tibble(P),
+                   as_tibble(do.call(cbind, lapply(c("nb", "hol", "wx", "wxde", "fuel"), pre))))
+  dir.create("tmp_py", showWarnings = FALSE)
+  write_csv(tab, "tmp_py/daily.csv")
+})
 bmtx_f  <- safe("BMT-X gas",  \() bmtx_forecast_day(features, exog, d, fuel_groups))
 learx_f <- safe("LEAR-X gas", \() learx_forecast_day(features, exog, d, fuel_groups))
 xgbx_f  <- safe("XGBoost-X gas", \() xgb_day("xgbx", exog[fuel_groups]))

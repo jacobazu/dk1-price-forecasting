@@ -101,6 +101,26 @@ jobs:
         if: github.event_name != 'push'
         run: Rscript scripts/05_forecast_tomorrow.R
 
+      # chronos-2 and the plain pytorch network from the model comparison, saved next to the forecast, not shown.
+      # a failure here never touches the forecast itself
+      - uses: actions/setup-python@v6
+        if: github.event_name != 'push'
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v5
+        if: github.event_name != 'push'
+        with:
+          path: ~/.cache/huggingface
+          key: chronos-2
+      - name: Python challengers
+        if: github.event_name != 'push'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet numpy pandas scikit-learn chronos-forecasting==2.3.2
+          THREADS=4 python bakeoff/live.py tmp_py/daily.csv
+
       # backtest + live days
       - name: Evaluate forecasts and battery
         if: github.event_name != 'push'
@@ -115,7 +135,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add forecasts/forecasts_live.csv live/ results/
+          git add forecasts/ live/ results/
           # tomorrow in danish time
           target=$(TZ=Europe/Copenhagen date -d tomorrow +%F)
           if git diff --cached --quiet -- forecasts/forecasts_live.csv; then
