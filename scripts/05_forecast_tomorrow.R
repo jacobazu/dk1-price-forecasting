@@ -82,6 +82,9 @@ fuel_groups <- c(groups, "fuel")
 bmtx_f  <- safe("BMT-X gas",  \() bmtx_forecast_day(features, exog, d, fuel_groups))
 learx_f <- safe("LEAR-X gas", \() learx_forecast_day(features, exog, d, fuel_groups))
 xgbx_f  <- safe("XGBoost-X gas", \() xgb_day("xgbx", exog[fuel_groups]))
+# challenger from 12 nov 2026: lear-x with gas, prices and inputs scaled over 4 years instead of 2, trained on the same days.
+# chosen on the tuning days before any test day (jacobazu/dk1-model-comparison, windows/). decided 1 mar 2027
+learx_f4y <- safe("LEAR-X gas 4y", \() learx_forecast_day(features, exog, d, fuel_groups, scale_window = 1460))
 fuel_bias <- safe("Gas bias", \() {
   past <- all_forecasts("ensemble_fuel") |> transmute(date, hour, actual, forecast = ensemble_fuel) |> filter(!is.na(forecast))
   b <- bias_day(past, target)
@@ -102,7 +105,9 @@ new_forecast <- tibble(
   naive_mix         = round(naive_mix, 2)
 ) |>
   add_ensembles() |>   # NA if one failed
-  mutate(ensemble_fuel = round((bmtx_f + learx_f + xgbx_f) / 3, 2),
+  mutate(learx_fuel_4y = round(learx_f4y, 2),
+         ensemble_fuel = round((bmtx_f + learx_f + xgbx_f) / 3, 2),
+         ensemble_fuel_4y = round((bmtx_f + learx_f4y + xgbx_f) / 3, 2),
          ensemble_fuel_bc = round(ensemble_fuel + fuel_bias, 2),
          ensemble_bc = ensemble + bias,
          ensemble_gas = ensemble + gas_adj,

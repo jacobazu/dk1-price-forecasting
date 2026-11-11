@@ -1,13 +1,15 @@
 # bmt-x and lear-x, one day
 
 # candidates for day d
-x_inputs <- function(features, exog, d, groups, window = 730) {
+# scale_window: days the price and input scaling is taken over, the same as the training window unless set
+x_inputs <- function(features, exog, d, groups, window = 730, scale_window = window) {
   P     <- features$P
   train <- (d - window):(d - 1)
-  med <- median(P[train, ], na.rm = TRUE)
-  s   <- mad(P[train, ], na.rm = TRUE)
+  sc    <- max(1, d - scale_window):(d - 1)
+  med <- median(P[sc, ], na.rm = TRUE)
+  s   <- mad(P[sc, ], na.rm = TRUE)
 
-  ex <- transform_exog(exog, train)[groups]
+  ex <- transform_exog(exog, sc)[groups]
   X  <- cbind(transform_p(features$X_price, med, s), do.call(cbind, unname(ex)))
   if (anyNA(X[d, ])) stop("Missing inputs for the forecast day")
 
@@ -36,8 +38,8 @@ bmtx_forecast_day <- function(features, exog, d, groups = c("nb", "hol", "wx"), 
   })
 }
 
-learx_forecast_day <- function(features, exog, d, groups = c("nb", "hol", "wx"), window = 730) {
-  inp <- x_inputs(features, exog, d, groups, window)
+learx_forecast_day <- function(features, exog, d, groups = c("nb", "hol", "wx"), window = 730, scale_window = window) {
+  inp <- x_inputs(features, exog, d, groups, window, scale_window)
   Xl  <- cbind(inp$X[inp$keep, ], features$X_dow[inp$keep, ])
   xl  <- matrix(c(inp$X[d, ], features$X_dow[d, ]), nrow = 1)
 
