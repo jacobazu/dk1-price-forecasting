@@ -176,3 +176,8 @@ a:hover { text-decoration: underline; }
 
 body, .navbar, .quarto-dashboard .card, button { font-family: "Instrument Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
 code { background: #f5f2ef !important; color: #44403c !important; border-radius: 4px; padding: 1px 6px; }
+
+// legend under the forecast chart
+.fv-key { display: flex; gap: 22px; flex-wrap: wrap; margin: 2px 0 6px 44px; font-size: 13.5px; color: #78716c; }
+.fv-key span { display: inline-flex; align-items: center; gap: 8px; }
+.fv-key i { display: inline-block; width: 22px; height: 10px; border-radius: 3px; }

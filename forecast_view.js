@@ -1,4 +1,4 @@
-// forecast page: one column per hour, brighter where the price is more likely. data from R/forecast_view.R
+// forecast page: the forecast as a line with its likely range as a band. data from R/forecast_view.R
 (function () {
   const D = JSON.parse(document.getElementById("fv-data").textContent), root = document.getElementById("fv");
   const taus = Array.from({ length: 19 }, (_, i) => 0.05 + 0.05 * i), n = 24;
@@ -32,20 +32,27 @@
     return p;
   }
 
+  // one line for the forecast, a soft band for the likely range: darker 50%, lighter 90%
   function main(M) {
     const f = M.mean, Q = M.q, pk = f.indexOf(Math.max(...f));
-    const all = Q ? Q.flat().concat(f) : f, top = Math.max(50, Math.ceil(Math.max(...all) / 100) * 100), bot = Math.min(0, Math.floor(Math.min(...all) / 100) * 100);
-    const W = 1190, H = 470, L = 44, R = 8, T = 16, B = 70, y = p => T + (H - T - B) * (1 - (p - bot) / (top - bot)), cw = (W - L - R) / n, x = h => L + cw * (h + .5);
-    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast price per hour with its range"><defs>`;
-    if (Q) for (let h = 0; h < n; h++) s += `<linearGradient id="fvg${h}" x1="0" y1="0" x2="0" y2="1">` + dens(Q[h], 40).reverse().map((o, i) =>
-      `<stop offset="${(i / 39 * 100).toFixed(1)}%" stop-color="${h == pk ? amber : aqua}" stop-opacity="${(0.04 + 0.86 * o[1] ** 1.3).toFixed(3)}"/>`).join("") + "</linearGradient>";
-    s += "</defs>";
-    const step = (top - bot) / 4;
-    for (let g = bot; g <= top + 1e-9; g += step) s += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "#a8a29e" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
+    const all = Q ? Q.flat().concat(f) : f, span = Math.max(...all) - Math.min(0, ...all);
+    const st = [25, 50, 100, 200, 500].find(v => span / v <= 5) || 1000;   // round steps, at most 5 of them
+    const top = Math.max(st, Math.ceil(Math.max(...all) / st) * st), bot = Math.min(0, Math.floor(Math.min(...all) / st) * st);
+    const W = 1190, H = 440, L = 44, R = 16, T = 24, B = 36, y = p => T + (H - T - B) * (1 - (p - bot) / (top - bot)), cw = (W - L - R) / n, x = h => L + cw * (h + .5);
+    const path = (v) => v.map((p, h) => `${h ? "L" : "M"}${x(h).toFixed(1)},${y(p).toFixed(1)}`).join("");
+    const band = (lo, hi) => path(hi) + v2(lo) + "Z", v2 = v => v.map((p, h) => h).reverse().map(h => `L${x(h).toFixed(1)},${y(v[h]).toFixed(1)}`).join("");
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast price per hour with its range">`;
+    for (let g = bot; g <= top + 1e-9; g += st) s += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "#a8a29e" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
+    if (Q) {
+      const qs = k => Q.map(r => r[k]);
+      s += `<path d="${band(qs(0), qs(18))}" fill="${aqua}" fill-opacity=".13"/>`;
+      s += `<path d="${band(qs(4), qs(14))}" fill="${aqua}" fill-opacity=".22"/>`;
+    }
+    s += `<path d="${path(f)}" fill="none" stroke="${ink}" stroke-width="2.2" stroke-linejoin="round"/>`;
+    s += `<circle cx="${x(pk)}" cy="${y(f[pk])}" r="5" fill="${amber}" stroke="#fff" stroke-width="2"/>`;
+    s += `<text x="${x(pk)}" y="${y(Q ? Q[pk][18] : f[pk]) - 10}" text-anchor="middle" class="fv-v" fill="${amber}">${r0(f[pk])}</text>`;
     for (let h = 0; h < n; h++) {
-      if (Q) s += `<rect x="${x(h) - cw * .4}" width="${cw * .8}" y="${y(Q[h][18])}" height="${Math.max(2, y(Q[h][0]) - y(Q[h][18]))}" rx="${cw * .16}" fill="url(#fvg${h})"/>`;
-      s += `<rect x="${x(h) - cw * .4}" width="${cw * .8}" y="${y(f[h]) - 1.5}" height="3" rx="1.5" fill="#1c1917"/>`;
-      s += `<text x="${x(h)}" y="${H - 40}" text-anchor="middle" fill="${mute}">${hh(h)}</text><text x="${x(h)}" y="${H - 16}" text-anchor="middle" class="fv-v" fill="${h == pk ? amber : ink}">${r0(f[h])}</text>`;
+      if (h % 3 == 0) s += `<text x="${x(h)}" y="${H - 10}" text-anchor="middle" fill="${mute}">${hh(h)}:00</text>`;
       s += `<rect class="fv-hit" data-h="${h}" x="${x(h) - cw / 2}" width="${cw}" y="${T}" height="${H - T}" fill="transparent"/>`;
     }
     return s + "</svg>";
@@ -84,11 +91,12 @@
     const M = D.models[cur], f = M.mean, pk = f.indexOf(Math.max(...f)), lw = f.indexOf(Math.min(...f)), avg = r0(f.reduce((a, b) => a + b) / n);
     const unc = M.q ? M.q.map(q => q[18] - q[0]).indexOf(Math.max(...M.q.map(q => q[18] - q[0]))) : null;
     const keys = Object.keys(D.models);
-    root.innerHTML = `<div class="fv-top"><h1>${D.day}<small>Saved ${D.made}, before the auction. The darker the colour, the more likely the price.</small></h1>
+    root.innerHTML = `<div class="fv-top"><h1>${D.day}<small>Saved ${D.made}, before the auction</small></h1>
       <div class="fv-num"><b>${avg}</b>average, €/MWh</div><div class="fv-num"><b style="color:${amber}">${r0(f[pk])}</b>highest, ${hh(pk)}:00</div>
       <div class="fv-num"><b>${r0(f[lw])}</b>lowest, ${hh(lw)}:00</div><div class="fv-num"><b>${D.neg}</b>chance of a negative price</div></div>
       ${keys.length > 1 ? `<div class="fv-pills">${keys.map(k => `<button data-m="${k}" class="${k == cur ? "on" : ""}">${D.models[k].label}</button>`).join("")}</div>` : ""}
       <div class="fv-chart">${main(M)}<div class="fv-tip" hidden></div></div>
+      ${M.q ? `<div class="fv-key"><span><i style="background:${ink};height:2px"></i>forecast</span><span><i style="background:${aqua};opacity:.45"></i>half the time in here</span><span><i style="background:${aqua};opacity:.2"></i>9 times in 10</span></div>` : ""}
       <div class="fv-low"><div class="fv-pane">${unc == null ? "<h2>No range yet</h2>" : `<h2>${hh(unc)}:00, the least certain hour</h2><p>Half the time below ${r0(M.q[unc][9])} €/MWh</p>${one(M, unc)}`}</div>
       <div class="fv-pane"><h2>Hours inside the range</h2><p>Per day, out of 24. Pale: fewer than 8 in 10</p>${daybars(M)}</div>
       <div class="fv-pane"><h2>Last 30 days, ${D.models[D.main].label}</h2><p>Dot: where it is. Line: the aim</p>${D.checks.map(meter).join("")}</div></div>`;

@@ -85,70 +85,57 @@ source("R/dashboard_setup.R", local = knitr::knit_global())
 
 ## Row {height=56%}
 
+### Column {.tabset}
+
 ```{r}
-#| title: "Live forecast vs actual, €/MWh. Red/blue: outside the 90% range"
+#| title: "Last 7 days, €/MWh"
 if (nrow(scored) == 0) {
   cat("The track record starts once the first forecast day has passed.")
 } else {
-  sc <- scored |> mutate(time = as_datetime(date, tz = "Europe/Copenhagen") + hours(hour))
-  blank <- tibble(time = sc$time[1], y = NA_real_, y2 = NA_real_)
-
-  # gaps between the actual price and the 90% range, as closed shapes, one per run of hours
-  gap_shapes <- function(t, edge, a) {
-    r <- rle(!is.na(edge))
-    ends <- cumsum(r$lengths)
-    out <- lapply(which(r$values), \(k) {
-      i <- (ends[k] - r$lengths[k] + 1):ends[k]
-      if (length(i) == 1) i <- c(i, i)   # one hour: a sliver around the point
-      tibble(time = c(t[i], rev(t[i]), NA), y = c(edge[i], rev(a[i]), NA))
-    })
-    if (length(out) == 0) blank["time"] |> mutate(y = NA_real_) else bind_rows(out)
-  }
-
-  p2 <- plot_ly(sc, x = ~time) |>
-    add_lines(y = ~actual, name = "Actual", line = list(color = ink, width = 1.5),
-              hovertemplate = "%{y:.1f} €/MWh<extra>Actual</extra>")
-
-  bar_w <- 0.6 * 86400000
+  wk <- scored |> filter(date > max(date) - days(7)) |>
+    mutate(time = as_datetime(date, tz = "Europe/Copenhagen") + hours(hour))
+  p2 <- plot_ly(wk, x = ~time) |>
+    add_lines(y = ~actual, name = "What it cost", line = list(color = ink, width = 2),
+              hovertemplate = "%{y:.0f} €/MWh<extra>Actual</extra>")
   for (m in models) {
     vis <- m == models[1]
-    col <- model_colors[[m]]
-    b <- sc |> select(date, hour, time, actual, f = all_of(m))
+    b <- wk |> select(date, hour, time, f = all_of(m))
     b <- if (!is.null(bands[[m]])) left_join(b, bands[[m]], by = c("date", "hour")) else mutate(b, o0.05 = NA_real_, o0.95 = NA_real_)
-    b <- b |> mutate(lo = f + o0.05, hi = f + o0.95,
-                     above = ifelse(!is.na(hi) & actual > hi, hi, NA), below = ifelse(!is.na(lo) & actual < lo, lo, NA))
-    up <- gap_shapes(b$time, b$above, b$actual)
-    dn <- gap_shapes(b$time, b$below, b$actual)
-    days <- b |> group_by(date) |>
-      summarise(up = sum(!is.na(above)), dn = -sum(!is.na(below)), .groups = "drop") |>
-      mutate(time = as_datetime(date, tz = "Europe/Copenhagen") + hours(12))
+    b <- b |> mutate(lo = f + o0.05, hi = f + o0.95)
     p2 <- p2 |>
-      add_lines(data = b, x = ~time, y = ~lo, line = list(width = 0), showlegend = FALSE, visible = vis,
-                hoverinfo = "skip") |>
+      add_lines(data = b, x = ~time, y = ~lo, line = list(width = 0), showlegend = FALSE, visible = vis, hoverinfo = "skip") |>
       add_lines(data = b, x = ~time, y = ~hi, line = list(width = 0), fill = "tonexty",
-                fillcolor = "rgba(107,114,128,0.12)", name = "90% range", visible = vis, hoverinfo = "skip") |>
-      add_polygons(data = up, x = ~time, y = ~y, fillcolor = "rgba(220,38,38,0.45)", line = list(width = 0),
-                   name = "Above the range", visible = vis, hoverinfo = "skip") |>
-      add_polygons(data = dn, x = ~time, y = ~y, fillcolor = "rgba(42,157,143,0.45)", line = list(width = 0),
-                   name = "Below the range", visible = vis, hoverinfo = "skip") |>
-      add_bars(data = days, x = ~time, y = ~up, yaxis = "y2", width = bar_w, marker = list(color = "#b91c1c"),
-               showlegend = FALSE, visible = vis, hovertemplate = "%{y} hours above<extra></extra>") |>
-      add_bars(data = days, x = ~time, y = ~dn, yaxis = "y2", width = bar_w, marker = list(color = "#1c7fb0"),
-               showlegend = FALSE, visible = vis, hovertemplate = "%{customdata} hours below<extra></extra>",
-               customdata = ~-dn) |>
+                fillcolor = "rgba(192,128,12,0.16)", name = "90% range", visible = vis, hoverinfo = "skip") |>
       add_lines(data = b, x = ~time, y = ~f, name = model_labels[[m]], visible = vis,
-                line = list(color = col, width = 1.5),
-                hovertemplate = paste0("%{y:.1f} €/MWh<extra>", model_labels[[m]], "</extra>"))
+                line = list(color = model_colors[[m]], width = 2),
+                hovertemplate = paste0("%{y:.0f} €/MWh<extra>", model_labels[[m]], "</extra>"))
   }
+  p2 |> chart_layout(models, per_model = 3)
+}
+```
 
-  bf <- backfilled |> filter(date %in% sc$date)
-  stars <- lapply(seq_len(nrow(bf)), \(i) list(
-    x = as_datetime(bf$date[i], tz = "Europe/Copenhagen") + hours(12), y = 1, yref = "paper", text = "*",
-    showarrow = FALSE, font = list(size = 20, color = ink), hovertext = paste("Backfilled:", bf$reason[i])))
-  p2 |> chart_layout(models, per_model = 7) |>
-    layout(yaxis = list(domain = c(0.3, 1)), barmode = "relative", annotations = stars,
-           yaxis2 = list(domain = c(0, 0.22), anchor = "x", title = list(text = "Hours outside", font = list(size = 11)),
-                         color = grey, gridcolor = "#f0ece8", zerolinecolor = "#d6d3d1"))
+```{r}
+#| title: "Every day: average error, €/MWh"
+if (nrow(scored) == 0) {
+  cat("The track record starts once the first forecast day has passed.")
+} else {
+  dd <- scored |> group_by(date) |>
+    summarise(model = mean(abs(actual - .data[[models[1]]])), naive = mean(abs(actual - naive_mix)), .groups = "drop") |>
+    mutate(star = date %in% backfilled$date,
+           tip = sprintf("%s%s<br>%s: %.0f<br>Naive: %.0f", format(date, "%a %d %b"), ifelse(star, " (backfilled*)", ""),
+                         model_labels[[models[1]]], model, naive))
+  plot_ly(dd, x = ~date) |>
+    add_bars(y = ~model, name = model_labels[[models[1]]], marker = list(color = model_colors[[models[1]]]),
+             text = ~tip, hoverinfo = "text", textposition = "none") |>
+    add_markers(y = ~naive, name = "Naive", marker = list(color = "#a8a29e", size = 8, line = list(color = "#fff", width = 1.5)),
+                text = ~tip, hoverinfo = "text") |>
+    add_text(data = filter(dd, star), y = ~model, text = "*", textposition = "top center", showlegend = FALSE,
+             textfont = list(size = 18, color = ink), hoverinfo = "skip") |>
+    layout(bargap = 0.35, xaxis = list(title = "", gridcolor = "#ffffff"),
+           yaxis = list(title = "", gridcolor = "#f0ece8", zeroline = FALSE, rangemode = "tozero"),
+           legend = list(orientation = "h", y = -0.12), hovermode = "closest",
+           margin = list(l = 40, r = 10, t = 10, b = 10)) |>
+    config(displayModeBar = FALSE)
 }
 ```
 
