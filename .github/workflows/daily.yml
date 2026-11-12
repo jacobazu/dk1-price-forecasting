@@ -8,10 +8,11 @@ on:
     # makes the forecast (entso-e load forecasts are published by 10:00), the other one is skipped
     - cron: "15 8 * * *"
     - cron: "15 9 * * *"
-    # afternoon refresh: nord pool publishes tomorrow's prices about 13:00 danish time. these runs only fetch them and
-    # rebuild the dashboard, so the forecast page shows the actual prices next to the saved forecast. two tries
-    - cron: "40 12 * * *"
-    - cron: "40 13 * * *"
+    # afternoon refresh: nord pool publishes tomorrow's prices about 13:00 danish time. every 20 minutes from then
+    # the gate asks energi data service whether they are out; the first run that finds them fetches them and
+    # rebuilds the dashboard (no forecast), and the rest of the day's runs stop at the gate. so a late nord pool
+    # just means a later rebuild, and a late or skipped github run is covered by the next one
+    - cron: "*/20 11-21 * * *"
   workflow_dispatch:       # "Run workflow" button. the outside scheduler (cron-job.org) sends scheduled = true
                            # at 10:15, 10:45 and 11:15 danish time
     inputs:
@@ -60,7 +61,16 @@ jobs:
           mode=forecast
           if [ "${{ github.event_name }}" = "push" ]; then go=true; mode=refresh
           elif [ "${{ github.event_name == 'schedule' || inputs.scheduled }}" != "true" ]; then go=true
-          elif [ "$now" -ge 1330 ]; then go=true; mode=refresh   # afternoon: prices are out, rebuild only
+          elif [ "$now" -ge 1300 ]; then
+            # afternoon: rebuild once, as soon as all of tomorrow's dk1 prices are published
+            mode=refresh
+            if [ "$(cat live/prices_shown.txt 2>/dev/null)" = "$target" ]; then go=false; echo "prices for $target already on the page"
+            else
+              n=$(curl -s -m 60 --retry 3 "https://api.energidataservice.dk/dataset/DayAheadPrices?start=$(date -d "$target -1 day" +%F)&end=$(date -d "$target +2 day" +%F)&filter=%7B%22PriceArea%22:%5B%22DK1%22%5D%7D&limit=0" \
+                | jq --arg d "$target" '[.records[] | select((.TimeDK | startswith($d)) and .DayAheadPriceEUR != null)] | length' 2>/dev/null || echo 0)
+              echo "dk1 prices published for $target: ${n:-0} quarter-hours"
+              if [ "${n:-0}" -ge 92 ]; then go=true; else go=false; fi
+            fi
           elif [ "$now" -lt 1000 ]; then go=false
           elif [ "$now" -ge 1145 ]; then go=false
           elif grep -q ",$target," forecasts/forecasts_live.csv; then go=false
@@ -194,3 +204,25 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
+  # the afternoon refresh made it onto the page: note the day, so the rest of today's runs stop at the gate
+  mark:
+    needs: [gate, deploy]
+    if: needs.gate.outputs.mode == 'refresh' && github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: master
+      - run: |
+          TZ=Europe/Copenhagen date -d tomorrow +%F > live/prices_shown.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add live/prices_shown.txt
+          git commit -m "Actual prices for $(cat live/prices_shown.txt) on the dashboard" || exit 0
+          for try in 1 2 3; do
+            if git pull --rebase origin master && git push; then exit 0; fi
+            git rebase --abort 2>/dev/null || true
+            sleep 20
+          done
+          exit 1

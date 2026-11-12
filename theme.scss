@@ -205,3 +205,5 @@ a:hover { text-decoration: underline; }
 
 body, .navbar, .quarto-dashboard .card, button { font-family: "Instrument Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
 code { background: #f5f2ef !important; color: #44403c !important; border-radius: 4px; padding: 1px 6px; }
+.fv-clock { display: block; font-size: 1rem; font-weight: 400; letter-spacing: 0; color: #44403c; margin-top: 8px; }
+.fv-clock b { font-weight: 600; color: #1c1917; font-variant-numeric: tabular-nums; }

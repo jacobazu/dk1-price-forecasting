@@ -31,7 +31,9 @@ forecast_view <- function() {
   bias <- Filter(\(k) grepl("^Bias", k$name), desk$checks)
   data <- list(day = trimws(format(latest, "%A %e %B")), made = format(made_dk, "%A %H:%M"), main = main,
                models = per_model, bias = if (length(bias)) bias[[1]]$x else NULL,
-               actual = if (nrow(act) == 24 && !anyNA(act$actual)) round(act$actual, 1) else NULL)
+               actual = if (nrow(act) == 24 && !anyNA(act$actual)) round(act$actual, 1) else NULL,
+               # nord pool publishes the day's prices about 13:00 danish time the day before
+               publish = format(with_tz(as.POSIXct(paste(latest - 1, "13:00"), tz = "Europe/Copenhagen"), "UTC"), "%Y-%m-%dT%H:%M:%SZ"))
   paste0('<div id="fv"></div><script type="application/json" id="fv-data">',
          jsonlite::toJSON(data, auto_unbox = TRUE, null = "null", digits = NA),
          '</script><script>', paste(readLines("forecast_view.js", warn = FALSE), collapse = "\n"), '</script>')

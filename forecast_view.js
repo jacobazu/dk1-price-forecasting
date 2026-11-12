@@ -102,7 +102,7 @@
     const ng = Q ? Math.max(...Q.map(neg)) : null, gi = Q ? Q.map(neg).indexOf(ng) : 0;
     const hit = A && Q ? A.filter((p, h) => p >= Q[h][0] && p <= Q[h][18]).length : null;
     const stat = (k, v, sub) => `<div class="fv-stat"><span>${k}</span><b>${v}</b><small>${sub}</small></div>`;
-    root.innerHTML = `<div class="fv-top"><h1>${D.day}<small>Forecast saved ${D.made}, before the auction${A ? `. The prices are out: ${hit == null ? "" : `<b>${hit} of 24 hours</b> landed inside the 9-in-10 range, `}the day averaged ${r0(mean(A))} €/MWh` : ""}</small></h1>
+    root.innerHTML = `<div class="fv-top"><h1>${D.day}<small>Forecast saved ${D.made}, before the auction${A ? `. The prices are out: ${hit == null ? "" : `<b>${hit} of 24 hours</b> landed inside the 9-in-10 range, `}the day averaged ${r0(mean(A))} €/MWh` : ""}</small>${A ? "" : `<span class="fv-clock" aria-live="polite"></span>`}</h1>
       ${keys.length > 1 ? `<div class="fv-pills">${keys.map(k => `<button data-m="${k}" class="${k == cur ? "on" : ""}">${D.models[k].label}</button>`).join("")}</div>` : ""}</div>
       <div class="fv-stats">
       ${stat("Day average", `${r0(avg)}<em> €/MWh</em>`, "the forecast")}
@@ -131,4 +131,26 @@
     root.querySelectorAll(".fv-pills button").forEach(b => b.addEventListener("click", () => { cur = b.dataset.m; draw(); }));
   }
   draw();
+
+  // until the actual prices are on the page: a countdown to nord pool's 13:00 publication, then a note while the
+  // page waits for them. after the due time it checks every 3 minutes whether a newer page has them, and reloads
+  if (!D.actual && D.publish) {
+    const due = new Date(D.publish), two = v => String(v).padStart(2, "0");
+    const tick = () => {
+      const el = root.querySelector(".fv-clock"); if (!el) return;
+      const s = Math.round((due - Date.now()) / 1000);
+      if (s > 0) {
+        el.innerHTML = `Nord Pool publishes the actual prices at 13:00, in <b>${Math.floor(s / 3600)}:${two(Math.floor(s % 3600 / 60))}:${two(s % 60)}</b>`;
+      } else if (s > -45 * 60) {
+        el.innerHTML = `Nord Pool's prices are due now. They appear here within about half an hour, this page reloads by itself`;
+      } else {
+        el.innerHTML = `Nord Pool is later than usual today. The page checks every 20 minutes and shows the prices as soon as they are out`;
+      }
+    };
+    tick(); setInterval(tick, 1000);
+    if (location.protocol.startsWith("http")) setInterval(() => {
+      if (Date.now() < due) return;
+      fetch(location.href, { cache: "no-store" }).then(r => r.text()).then(t => { if (/"actual":\[/.test(t)) location.reload(); }).catch(() => {});
+    }, 3 * 60 * 1000);
+  }
 })();
