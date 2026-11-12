@@ -28,8 +28,9 @@ Saved next to the ensemble before each auction, but not shown as the forecast. E
 - The ensemble with the gas price as an input, with and without a bias correction (from 14 Oct 2026).
 - The same with the price scaling fitted on four years instead of two (from 12 Nov 2026).
 - Chronos-2 and a PyTorch network with the ensemble, and Timestral with the ensemble, from the [model comparison](https://jacobazu.github.io/models/) (from 13 Nov 2026).
+- LEAR-X on prices relative to the gas price, in the ensemble in place of LEAR-X (from 14 Nov 2026). A fix for forecasts that run too low since prices and gas doubled: [test and result](https://github.com/jacobazu/dk1-model-comparison/blob/main/level/RESULT.md).
 
-The new challengers get one early check on 15 Dec 2026 (p < 0.01). Otherwise they are all judged on 1 Mar 2027 and replace the ensemble only if their live MAE is lower with p < 0.05.
+The challengers from 13 and 14 Nov get one early check on 15 Dec 2026 (p < 0.01). Otherwise they are all judged on 1 Mar 2027 and replace the ensemble only if their live MAE is lower with p < 0.05.
 
 ## Inputs
 
