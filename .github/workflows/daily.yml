@@ -8,6 +8,10 @@ on:
     # makes the forecast (entso-e load forecasts are published by 10:00), the other one is skipped
     - cron: "15 8 * * *"
     - cron: "15 9 * * *"
+    # afternoon refresh: nord pool publishes tomorrow's prices about 13:00 danish time. these runs only fetch them and
+    # rebuild the dashboard, so the forecast page shows the actual prices next to the saved forecast. two tries
+    - cron: "40 12 * * *"
+    - cron: "40 13 * * *"
   workflow_dispatch:       # "Run workflow" button. the outside scheduler (cron-job.org) sends scheduled = true
                            # at 10:15, 10:45 and 11:15 danish time
     inputs:
@@ -43,6 +47,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       go: ${{ steps.check.outputs.go }}
+      mode: ${{ steps.check.outputs.mode }}
     steps:
       # the latest commit, not the one from when the run was queued
       - uses: actions/checkout@v7
@@ -52,13 +57,17 @@ jobs:
         run: |
           now=$(TZ=Europe/Copenhagen date +%H%M)
           target=$(TZ=Europe/Copenhagen date -d tomorrow +%F)
-          if [ "${{ github.event_name == 'schedule' || inputs.scheduled }}" != "true" ]; then go=true
+          mode=forecast
+          if [ "${{ github.event_name }}" = "push" ]; then go=true; mode=refresh
+          elif [ "${{ github.event_name == 'schedule' || inputs.scheduled }}" != "true" ]; then go=true
+          elif [ "$now" -ge 1330 ]; then go=true; mode=refresh   # afternoon: prices are out, rebuild only
           elif [ "$now" -lt 1000 ]; then go=false
           elif [ "$now" -ge 1145 ]; then go=false
           elif grep -q ",$target," forecasts/forecasts_live.csv; then go=false
           else go=true; fi
           echo "go=$go" >> "$GITHUB_OUTPUT"
-          echo "danish time $now, forecast for $target: run = $go"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "danish time $now, forecast for $target: run = $go, $mode"
 
   forecast:
     needs: gate
@@ -109,22 +118,22 @@ jobs:
         run: Rscript scripts/01_update_live.R
 
       - name: Forecast tomorrow
-        if: github.event_name != 'push'
+        if: needs.gate.outputs.mode == 'forecast'
         run: Rscript scripts/05_forecast_tomorrow.R
 
       # chronos-2 and the plain pytorch network from the model comparison, saved next to the forecast, not shown.
       # a failure here never touches the forecast itself
       - uses: actions/setup-python@v6
-        if: github.event_name != 'push'
+        if: needs.gate.outputs.mode == 'forecast'
         with:
           python-version: "3.12"
       - uses: actions/cache@v5
-        if: github.event_name != 'push'
+        if: needs.gate.outputs.mode == 'forecast'
         with:
           path: ~/.cache/huggingface
           key: chronos-2
       - name: Python challengers
-        if: github.event_name != 'push'
+        if: needs.gate.outputs.mode == 'forecast'
         continue-on-error: true
         timeout-minutes: 20
         run: |
@@ -135,7 +144,7 @@ jobs:
 
       # backtest + live days
       - name: Evaluate forecasts and battery
-        if: github.event_name != 'push'
+        if: needs.gate.outputs.mode == 'forecast'
         continue-on-error: true   # forecast saved anyway
         run: |
           Rscript scripts/10_evaluate.R
@@ -143,7 +152,7 @@ jobs:
           Rscript scripts/12_battery_risk.R
 
       - name: Save forecast and results to the repository
-        if: github.event_name != 'push'
+        if: needs.gate.outputs.mode == 'forecast'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
