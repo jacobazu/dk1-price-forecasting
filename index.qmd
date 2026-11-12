@@ -119,23 +119,32 @@ if (nrow(scored) == 0) {
 if (nrow(scored) == 0) {
   cat("The track record starts once the first forecast day has passed.")
 } else {
+  # one set of bars per model, chosen with the buttons; the naive benchmark as grey dots on all of them
+  em <- real_models[sapply(real_models, \(m) any(!is.na(scored[[m]])))]
   dd <- scored |> group_by(date) |>
-    summarise(model = mean(abs(actual - .data[[models[1]]])), naive = mean(abs(actual - naive_mix)), .groups = "drop") |>
+    summarise(naive = mean(abs(actual - naive_mix)),
+              across(all_of(em), \(f) mean(abs(actual - f))), .groups = "drop") |>
     mutate(star = date %in% backfilled$date,
-           tip = sprintf("%s%s<br>%s: %.0f<br>Naive: %.0f", format(date, "%a %d %b"), ifelse(star, " (backfilled*)", ""),
-                         model_labels[[models[1]]], model, naive))
-  plot_ly(dd, x = ~date) |>
-    add_bars(y = ~model, name = model_labels[[models[1]]], marker = list(color = model_colors[[models[1]]]),
-             text = ~tip, hoverinfo = "text", textposition = "none") |>
-    add_markers(y = ~naive, name = "Naive", marker = list(color = "#a8a29e", size = 8, line = list(color = "#fff", width = 1.5)),
-                text = ~tip, hoverinfo = "text") |>
-    add_text(data = filter(dd, star), y = ~model, text = "*", textposition = "top center", showlegend = FALSE,
-             textfont = list(size = 18, color = ink), hoverinfo = "skip") |>
+           top = do.call(pmax, c(across(all_of(em)), na.rm = TRUE)),
+           day = paste0(format(date, "%a %d %b"), ifelse(star, " (backfilled*)", "")))
+  p <- plot_ly(dd, x = ~date)
+  for (m in em) p <- p |>
+    add_bars(data = dd, x = ~date, y = dd[[m]], name = model_labels[[m]], marker = list(color = model_colors[[m]]), visible = m == em[1],
+             text = sprintf("%s<br>%s: %.0f<br>Naive: %.0f", dd$day, model_labels[[m]], dd[[m]], dd$naive),
+             hoverinfo = "text", textposition = "none")
+  p <- p |>
+    add_markers(data = dd, x = ~date, y = ~naive, name = "Naive", marker = list(color = "#a8a29e", size = 8, line = list(color = "#fff", width = 1.5)),
+                text = ~sprintf("%s<br>Naive: %.0f", day, naive), hoverinfo = "text")
+  if (any(dd$star)) p <- p |>
+    add_text(data = filter(dd, star), x = ~date, y = ~top, text = "*", textposition = "top center",
+             showlegend = FALSE, textfont = list(size = 18, color = ink), hoverinfo = "skip")
+  p |>
     layout(bargap = 0.35, xaxis = list(title = "", gridcolor = "#ffffff"),
            yaxis = list(title = "", gridcolor = "#f0ece8", zeroline = FALSE, rangemode = "tozero"),
            legend = list(orientation = "h", y = -0.12), hovermode = "closest",
-           margin = list(l = 40, r = 10, t = 10, b = 10)) |>
-    config(displayModeBar = FALSE)
+           margin = list(l = 40, r = 10, t = 40, b = 10)) |>
+    config(displayModeBar = FALSE) |>
+    model_buttons(em, n_fixed = if (any(dd$star)) 2 else 1, fixed_last = TRUE)
 }
 ```
 

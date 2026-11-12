@@ -23,7 +23,7 @@
   // (or of a negative price) is at least the chosen odds are coloured, with the chance written above
   function main(M) {
     const f = M.mean, Q = M.q;
-    const all = Q ? Q.flatMap(r => [r[0], r[18]]).concat(f, [LIM]) : f.concat([LIM]), span = Math.max(...all) - Math.min(0, ...all);
+    const all = Q ? Q.flatMap(r => [r[0], r[18]]).concat(f) : f.slice(), span = Math.max(...all) - Math.min(0, ...all);
     const st = [25, 50, 100, 200, 500].find(v => span / v <= 5) || 1000;
     const top = Math.max(st, Math.ceil(Math.max(...all) * 1.08 / st) * st), bot = Math.min(0, Math.floor(Math.min(...all) / st) * st);
     const W = 1190, H = 440, L = 44, R = 70, T = 30, B = 36;
@@ -31,8 +31,11 @@
     let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast price per hour, with the hours that may cross ${LIM} €/MWh marked">`;
     for (let g = bot; g <= top + 1e-9; g += st) s += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "#a8a29e" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
     // the limit
-    s += `<line x1="${L}" x2="${W - R}" y1="${y(LIM)}" y2="${y(LIM)}" stroke="${amber}" stroke-width="1.5" stroke-dasharray="6 5"/>`;
-    s += `<text x="${W - R + 8}" y="${y(LIM) + 4.5}" fill="${amber}" class="fv-b">${r0(LIM)}</text>`;
+    // the limit, drawn only when it is inside the chart: a limit far above every range shouldn't squash the chart
+    if (LIM <= top && LIM >= bot) {
+      s += `<line x1="${L}" x2="${W - R}" y1="${y(LIM)}" y2="${y(LIM)}" stroke="${amber}" stroke-width="1" stroke-opacity=".8" stroke-dasharray="4 5"/>`;
+      s += `<text x="${W - R + 8}" y="${y(LIM) - 3}" fill="${amber}" class="fv-s">limit</text><text x="${W - R + 8}" y="${y(LIM) + 12}" fill="${amber}" class="fv-s">${r0(LIM)}</text>`;
+    } else s += `<text x="${W - R}" y="${T - 10}" text-anchor="end" fill="${mute}" class="fv-s">Your limit, ${r0(LIM)} €/MWh, is ${LIM > top ? "above" : "below"} every hour's range</text>`;
     const bw = Math.min(26, cw * 0.62);
     s += `<path d="${f.map((p, h) => `${h ? "L" : "M"}${x(h).toFixed(1)},${y(p).toFixed(1)}`).join("")}" fill="none" stroke="${ink}" stroke-opacity=".35" stroke-width="1.5"/>`;
     for (let h = 0; h < n; h++) {

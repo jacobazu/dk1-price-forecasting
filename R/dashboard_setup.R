@@ -89,9 +89,11 @@ models <- intersect(names(model_labels), names(fc))
 
 # model buttons above a chart
 # per_model = traces per model
-model_buttons <- function(p, models, n_fixed = 1, per_model = 1) {
-  vis <- c(lapply(models, \(m) c(rep(TRUE, n_fixed), rep(models == m, each = per_model))),
-           list(c(rep(TRUE, n_fixed), rep(c(rep(FALSE, per_model - 1), TRUE), length(models)))))
+# fixed_last: the fixed traces come after the models (drawn on top)
+model_buttons <- function(p, models, n_fixed = 1, per_model = 1, fixed_last = FALSE) {
+  fx <- \(v) if (fixed_last) c(v, rep(TRUE, n_fixed)) else c(rep(TRUE, n_fixed), v)
+  vis <- c(lapply(models, \(m) fx(rep(models == m, each = per_model))),
+           list(fx(rep(c(rep(FALSE, per_model - 1), TRUE), length(models)))))
   htmlwidgets::onRender(p, "
     function(el, x, data) {
       el.style.position = 'relative';
