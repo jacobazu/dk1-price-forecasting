@@ -21,6 +21,16 @@ Four forecasts are made every morning and compared:
 
 Benchmark: the weekly naive (last week's prices on Mon, Sat and Sun, yesterday's on the other days). The models are re-estimated every day on the last two years.
 
+## Challengers
+
+Saved next to the ensemble before each auction, but not shown as the forecast. Each was chosen on a backtest with its rule fixed first, and only its live record can promote it:
+
+- The ensemble with the gas price as an input, with and without a bias correction (from 14 Oct 2026).
+- The same with the price scaling fitted on four years instead of two (from 12 Nov 2026).
+- Chronos-2 and a PyTorch network with the ensemble, and Timestral with the ensemble, from the [model comparison](https://jacobazu.github.io/models/) (from 13 Nov 2026).
+
+The new challengers get one early check on 15 Dec 2026 (p < 0.01). Otherwise they are all judged on 1 Mar 2027 and replace the ensemble only if their live MAE is lower with p < 0.05.
+
 ## Inputs
 
 The list is in [`inputs.csv`](inputs.csv): what each input is, where it comes from and when it is published. The live forecast and the backtest read the same list of input groups (`R/inputs.R`), and the dashboard won't build if the forecast uses anything that isn't in `inputs.csv` as published before the auction.
@@ -48,7 +58,7 @@ Tried and dropped: Energinet's wind and solar forecasts (published after the auc
 
 - The ensemble beats each single model (Diebold-Mariano with Newey-West, p < 0.001).
 - Weather forecasts for Germany cut the MAE from 19.0 to 17.0 (p < 0.001). Used from the forecast for 14 Oct 2026.
-- The forecasts run about 6 €/MWh too low. Most of it follows the gas price, which the models didn't see. With the gas price as an input the MAE drops from 17.0 to 16.4 (p = 0.002), and with a bias correction on top to 16.2. Both run live as challengers next to the ensemble. One replaces it on 1 Mar 2027 only if its live MAE is lower with p < 0.05.
+- The forecasts run about 6 €/MWh too low. Most of it follows the gas price, which the models didn't see. With the gas price as an input the MAE drops from 17.0 to 16.4 (p = 0.002), and with a bias correction on top to 16.2. Both run live as challengers (above).
 - Battery revenue at risk: of four methods only EWMA-filtered historical simulation passes the Kupiec, Christoffersen and Acerbi-Székely tests, and only just.
 
 The backtest page has the rest: ranges, the chance of a negative price and the battery backtest.
