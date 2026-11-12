@@ -148,6 +148,44 @@ if (nrow(scored) == 0) {
 }
 ```
 
+```{r}
+#| title: "Shape of the day: highest minus lowest price, €/MWh"
+if (nrow(scored) == 0) {
+  cat("The track record starts once the first forecast day has passed.")
+} else {
+  # per day: the spread between the dearest and cheapest hour, actual and forecast, and whether the forecast put
+  # the cheapest and dearest hours within an hour of where they came. this is what a battery or a flexible plant needs
+  sh <- bind_rows(lapply(real_models, \(m) {
+    scored |> filter(!is.na(.data[[m]])) |> group_by(date) |> filter(n() == 24) |> arrange(hour, .by_group = TRUE) |>
+      summarise(a_sp = max(actual) - min(actual), f_sp = max(.data[[m]]) - min(.data[[m]]),
+                a_lo = hour[which.min(actual)], f_lo = hour[which.min(.data[[m]])],
+                a_hi = hour[which.max(actual)], f_hi = hour[which.max(.data[[m]])], .groups = "drop") |>
+      mutate(m = m, lo_ok = abs(a_lo - f_lo) <= 1, hi_ok = abs(a_hi - f_hi) <= 1)
+  }))
+  em2 <- unique(sh$m)
+  act <- sh |> filter(m == em2[1])
+  p <- plot_ly(act, x = ~date) |>
+    add_bars(y = ~a_sp, name = "Actual", marker = list(color = "#e7e2dc"),
+             hovertemplate = "%{x|%a %d %b}: actual %{y:.0f}<extra></extra>")
+  for (m in em2) {
+    d <- sh |> filter(m == !!m)
+    nm <- sprintf("%s: cheapest hour found %d of %d days, dearest %d", model_labels[[m]], sum(d$lo_ok), nrow(d), sum(d$hi_ok))
+    tip <- sprintf("%s<br>Spread: forecast %.0f, actual %.0f<br>Cheapest hour: forecast %02d:00, actual %02d:00 %s<br>Dearest hour: forecast %02d:00, actual %02d:00 %s",
+                   format(d$date, "%a %d %b"), d$f_sp, d$a_sp, d$f_lo, d$a_lo, ifelse(d$lo_ok, "✓", "✗"),
+                   d$f_hi, d$a_hi, ifelse(d$hi_ok, "✓", "✗"))
+    p <- p |> add_markers(data = d, x = ~date, y = ~f_sp, name = nm, visible = m == em2[1], text = tip, hoverinfo = "text",
+                          hoverlabel = list(bgcolor = "#ffffff", bordercolor = "#e7e5e4", font = list(color = ink)),
+                          marker = list(color = model_colors[[m]], size = 9, line = list(color = "#fff", width = 1.5)))
+  }
+  p |>
+    layout(bargap = 0.35, xaxis = list(title = "", gridcolor = "#ffffff"),
+           yaxis = list(title = "", gridcolor = "#f0ece8", zeroline = FALSE, rangemode = "tozero", ticksuffix = " €"),
+           legend = list(orientation = "h", y = -0.12), hovermode = "closest", margin = list(l = 40, r = 10, t = 40, b = 10)) |>
+    config(displayModeBar = FALSE) |>
+    model_buttons(em2, n_fixed = 1)
+}
+```
+
 ## Row {height=30%}
 
 ```{r}
