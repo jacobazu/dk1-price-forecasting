@@ -101,10 +101,11 @@ fuel_bias <- safe("Gas bias", \() {
   if (is.null(b)) stop("under a month of live days") else b$bias
 })[1]
 
-# challenger from 14 nov 2026: lear-x on prices relative to the gas price (gas_relative in R/xmodels.R), in the
-# ensemble in place of lear-x. the live models run about 20 too low since prices and gas doubled; on 405 days this
-# cut lear-x's error from 19.5 to 17.9 and its bias from +8.8 to +2.6 (jacobazu/dk1-model-comparison, level/, rules
-# first). early check 15 dec 2026, otherwise 1 mar 2027. bmt-x and xgboost-x the same way are saved only: not tested yet
+# challenger from 14 nov 2026: lear-x and xgboost-x on prices relative to the gas price (gas_relative in R/xmodels.R),
+# bmt-x as it is. the live models run about 20 too low since prices and gas doubled. of the seven ways to switch
+# one, two or all three models, this one had the lowest error on 405 days: 16.3 against the ensemble's 17.9, bias
+# +3.8 against +7.0 (jacobazu/dk1-model-comparison, level/, rules first). early check 15 dec 2026, otherwise
+# 1 mar 2027. bmt-x relative to gas is saved too
 rel <- safe("Gas-relative inputs", \() gas_relative(features, exog))
 rel_run <- function(name, f) safe(name, \() {
   if (!is.list(rel)) stop("no gas price")
@@ -133,7 +134,7 @@ new_forecast <- tibble(
          ensemble_fuel_4y = round((bmtx_f + learx_f4y + xgbx_f) / 3, 2),
          ensemble_fuel_bc = round(ensemble_fuel + fuel_bias, 2),
          learx_rel = round(learx_rel, 2), bmtx_rel = round(bmtx_rel, 2), xgbx_rel = round(xgbx_rel, 2),
-         ensemble_gasrel = (bmtx + learx_rel + xgbx) / 3,
+         ensemble_gasrel = (bmtx + learx_rel + xgbx_rel) / 3,
          ensemble_bc = ensemble + bias,
          ensemble_gas = ensemble + gas_adj,
          across(starts_with("ensemble"), \(x) round(x, 2)))

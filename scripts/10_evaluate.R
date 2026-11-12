@@ -325,7 +325,7 @@ challengers <- c(ensemble_bc = "Bias-corrected", ensemble_gas = "Gas-corrected",
                  ensemble_chronos = "Gas in the models plus Chronos-2",
                  ensemble_nnmix = "Chronos-2 and the PyTorch network",
                  ensemble_timestral = "Gas in the models plus Timestral",
-                 ensemble_gasrel = "LEAR-X on prices relative to gas")
+                 ensemble_gasrel = "LEAR-X and XGBoost-X on prices relative to gas")
 # each challenger's own start; holm only within the challengers that started together, so a later one
 # doesn't change the rule for an earlier one
 ch_start <- c(ensemble_bc = as_date("2026-10-14"), ensemble_gas = as_date("2026-11-11"),
@@ -337,7 +337,7 @@ ch_start <- c(ensemble_bc = as_date("2026-10-14"), ensemble_gas = as_date("2026-
 # same evening, before any live day) also get one early check, fixed 11 nov 2026
 # before any live day: on 15 dec 2026 they replace the ensemble if the holm p-value is below 0.01, otherwise
 # they run on to 1 mar 2027 under the usual rule
-# the gas-relative lear-x (fixed 12 nov 2026, before its first live day) gets the same early check
+# the gas-relative challenger (fixed 12 nov 2026, before its first live day) gets the same early check
 ch_early <- c(ensemble_chronos = as_date("2026-12-15"), ensemble_nnmix = as_date("2026-12-15"),
               ensemble_timestral = as_date("2026-12-15"), ensemble_gasrel = as_date("2026-12-15"))
 
