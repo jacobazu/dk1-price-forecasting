@@ -182,4 +182,12 @@ code { background: #f5f2ef !important; color: #44403c !important; border-radius:
 .fv-key span { display: inline-flex; align-items: center; gap: 8px; }
 .fv-key i { display: inline-block; width: 22px; height: 10px; border-radius: 3px; }
 .fv-chart svg .fv-b { font-size: 14px; font-weight: 600; }
+.fv-ctl { font-size: 0.95rem; color: #44403c; margin: 6px 0 4px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.fv-ctl select, .fv-ctl input { font: inherit; color: #1c1917; border: 1px solid #d6d3d1; border-radius: 8px; padding: 3px 8px; background: #ffffff; }
+.fv-ctl input { width: 5.5em; }
+.fv-ctl select:focus-visible, .fv-ctl input:focus-visible { outline: 2px solid #c0800c; outline-offset: 1px; }
+.fv-tab { width: 100%; font-size: 0.875rem; border-collapse: collapse; }
+.fv-tab th { text-align: left; font-weight: 500; color: #78716c; padding: 4px 0; border-bottom: 1px solid #f0ece8; }
+.fv-tab td { padding: 5px 0; border-bottom: 1px solid #f7f5f3; color: #1c1917; }
+.fv-none { color: #44403c !important; }
 .fv-chart svg .fv-s { font-size: 12.5px; }

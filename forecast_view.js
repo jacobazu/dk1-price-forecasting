@@ -1,4 +1,4 @@
-// forecast page: the forecast as steps with its range, and how likely each price is per part of the day. data from R/forecast_view.R
+// forecast page: the forecast per hour with its range, and the hours that may cross a price limit the reader sets. data from R/forecast_view.R
 (function () {
   const D = JSON.parse(document.getElementById("fv-data").textContent), root = document.getElementById("fv");
   const taus = Array.from({ length: 19 }, (_, i) => 0.05 + 0.05 * i), n = 24;
@@ -6,97 +6,63 @@
   const hh = h => String(h).padStart(2, "0"), r0 = v => Math.round(v);
   let cur = D.main;
 
-  // density from the 19 quantiles: points spread evenly over 5-95%, gaussian kernel
-  function dens(q, m, pad = 0) {
-    const dr = [];
-    for (let i = 0; i < 200; i++) {
-      const t = 0.05 + 0.9 * i / 199, k = Math.min(17, Math.floor((t - 0.05) / 0.05 + 1e-9));
-      dr.push(q[k] + (t - taus[k]) / 0.05 * (q[k + 1] - q[k]));
-    }
-    const mu = dr.reduce((a, b) => a + b) / 200, sd = Math.sqrt(dr.reduce((a, b) => a + (b - mu) ** 2, 0) / 200);
-    const bw = Math.max(1, 0.4 * sd), lo = q[0] - pad * (q[18] - q[0]), hi = q[18] + pad * (q[18] - q[0]), out = [];
-    for (let j = 0; j < m; j++) {
-      const y = lo + (hi - lo) * j / (m - 1); let s = 0;
-      for (const x of dr) s += Math.exp(-0.5 * ((y - x) / bw) ** 2);
-      out.push([y, s]);
-    }
-    const mx = Math.max(...out.map(o => o[1]));
-    return out.map(o => [o[0], o[1] / mx]);
+  // chance the price ends above x (or below x), read off the 19 quantiles, linear in between
+  function above(q, x) {
+    if (x <= q[0]) return 0.95; if (x >= q[18]) return 0.05;
+    let k = 0; while (q[k + 1] < x) k++;
+    const t = taus[k] + 0.05 * (x - q[k]) / Math.max(1e-9, q[k + 1] - q[k]);
+    return 1 - t;
   }
-  function smooth(pts) {
-    let p = "M" + pts[0];
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[Math.max(0, i - 1)], b = pts[i], e = pts[i + 1], f = pts[Math.min(pts.length - 1, i + 2)];
-      p += `C${b[0] + (e[0] - a[0]) / 6},${b[1] + (e[1] - a[1]) / 6} ${e[0] - (f[0] - b[0]) / 6},${e[1] - (f[1] - b[1]) / 6} ${e}`;
-    }
-    return p;
-  }
+  const pct = c => c >= 0.95 ? "over 95%" : c <= 0.05 ? "under 5%" : r0(100 * c) + "%";
+  const blue = "#1c7fb0";
+  let LIM = 200, ODDS = 0.1;
+  try { LIM = +localStorage.getItem("fv-lim") || LIM; ODDS = +localStorage.getItem("fv-odds") || ODDS; } catch (e) {}
+  const flag = q => !q ? null : above(q, LIM) >= ODDS ? "hi" : (1 - above(q, 0)) >= ODDS ? "neg" : null;
 
-  // like the battery page: the forecast as steps with its 90% range, a sideways curve for each part of the day
-  // (the hatched end: the dearest 1 in 20), and the day's average on the right. the page has a range per hour, not
-  // whole-day paths, so a block's curve treats its hours as moving together (close for neighbouring hours, a bit wide)
-  const BLOCKS = [["Night", 0, 6], ["Morning", 6, 10], ["Day", 10, 17], ["Evening", 17, 24]];
-  const avgq = (Q, a, b) => Q[0].map((_, k) => { let t = 0; for (let h = a; h < b; h++) t += Q[h][k]; return t / (b - a); });
-  function side(dd, X0, wid, y, col, cut, id) {
-    // dd: [[price, 0..1]], drawn to the right of X0
-    const pts = dd.map(o => [X0 + wid * o[1], y(o[0])]);
-    const out = `M${X0},${y(dd[0][0])}` + pts.map(p => `L${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("") + `L${X0},${y(dd[dd.length - 1][0])}Z`;
-    const hot = dd.filter(o => o[0] >= cut), hp = hot.length > 1 ? `M${X0},${y(hot[0][0])}` + hot.map(o => `L${(X0 + wid * o[1]).toFixed(1)},${y(o[0]).toFixed(1)}`).join("") + `L${X0},${y(hot[hot.length - 1][0])}Z` : "";
-    return `<path d="${out}" fill="${col}" fill-opacity=".16" stroke="${col}" stroke-width="1.5"/>` + (hp ? `<path d="${hp}" fill="url(#${id})"/>` : "");
-  }
+  // each hour: the forecast as a dot, the 9-in-10 range as a bar. hours where the chance of crossing the limit
+  // (or of a negative price) is at least the chosen odds are coloured, with the chance written above
   function main(M) {
-    const f = M.mean, Q = M.q, pk = f.indexOf(Math.max(...f));
-    // room for the curves' tails (they run 20% past the 90% range) and the labels above
-    const all = Q ? Q.flatMap(r => [r[0] - 0.2 * (r[18] - r[0]), r[18] + 0.2 * (r[18] - r[0])]).concat(f) : f, span = Math.max(...all) - Math.min(0, ...all);
-    const st = [25, 50, 100, 200, 500].find(v => span / v <= 5) || 1000;   // round steps, at most 5 of them
-    const top = Math.max(st, Math.ceil(Math.max(...all) / st) * st), bot = Math.min(0, Math.floor(Math.min(...all) / st) * st);
-    const W = 1190, H = 480, L = 44, PW = Q ? 210 : 0, R = 16 + PW, T = Q ? 62 : 24, B = 36;
+    const f = M.mean, Q = M.q;
+    const all = Q ? Q.flatMap(r => [r[0], r[18]]).concat(f, [LIM]) : f.concat([LIM]), span = Math.max(...all) - Math.min(0, ...all);
+    const st = [25, 50, 100, 200, 500].find(v => span / v <= 5) || 1000;
+    const top = Math.max(st, Math.ceil(Math.max(...all) * 1.08 / st) * st), bot = Math.min(0, Math.floor(Math.min(...all) / st) * st);
+    const W = 1190, H = 440, L = 44, R = 70, T = 30, B = 36;
     const y = p => T + (H - T - B) * (1 - (p - bot) / (top - bot)), cw = (W - L - R) / n, xs = h => L + cw * h, x = h => xs(h) + cw / 2;
-    const steps = v => v.map((p, h) => `${h ? "L" : "M"}${xs(h).toFixed(1)},${y(p).toFixed(1)}L${xs(h + 1).toFixed(1)},${y(p).toFixed(1)}`).join("");
-    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast price per hour with its range"><defs>
-      <pattern id="fvh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="${amber}" fill-opacity=".10"/><line x1="0" y1="0" x2="0" y2="6" stroke="${amber}" stroke-width="2"/></pattern></defs>`;
-    for (let g = bot; g <= top + 1e-9; g += st) s += `<line x1="${L}" x2="${W - 16}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "#a8a29e" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
-    if (Q) {
-      const hi = Q.map(r => r[18]), lo = Q.map(r => r[0]);
-      let bd = "";
-      for (let h = 0; h < n; h++) bd += `${h ? "L" : "M"}${xs(h).toFixed(1)},${y(hi[h]).toFixed(1)}L${xs(h + 1).toFixed(1)},${y(hi[h]).toFixed(1)}`;
-      for (let h = n - 1; h >= 0; h--) bd += `L${xs(h + 1).toFixed(1)},${y(lo[h]).toFixed(1)}L${xs(h).toFixed(1)},${y(lo[h]).toFixed(1)}`;
-      s += `<path d="${bd}Z" fill="${ink}" fill-opacity=".06"/>`;
-      // a curve per part of the day
-      for (const [name, a, b] of BLOCKS) {
-        const q = avgq(Q, a, b), dd = dens(q, 70, 0.2).filter(o => o[1] > 0.02), cut = q[17];   // 95% quantile: 1 in 20 above
-        s += `<line x1="${xs(a)}" x2="${xs(a)}" y1="${T}" y2="${H - B}" stroke="${grid}"/>`;
-        s += side(dd, xs(a) + 4, cw * Math.min(2.4, (b - a) * 0.75), y, aqua, cut, "fvh");
-        s += `<text x="${xs(a) + 6}" y="14" fill="${ink}" class="fv-b">${name}</text><text x="${xs(a) + 6}" y="30" fill="${mute}" class="fv-s">about ${r0(q[9])}</text><text x="${xs(a) + 6}" y="45" fill="${amber}" class="fv-s">1 in 20 > ${r0(cut)}</text>`;
-      }
-      // the day's average on the right
-      const qd = avgq(Q, 0, n), dd = dens(qd, 70, 0.2).filter(o => o[1] > 0.02), X0 = W - PW + 18, cut = qd[17];
-      s += `<line x1="${W - PW}" x2="${W - PW}" y1="${T}" y2="${H - B}" stroke="#e7e5e4"/>`;
-      s += side(dd, X0, PW - 40, y, aqua, cut, "fvh");
-      s += `<line x1="${X0}" x2="${X0 + (PW - 40) * 0.98}" y1="${y(qd[9])}" y2="${y(qd[9])}" stroke="${ink}" stroke-width="1.5" stroke-dasharray="3 3"/>`;
-      s += `<text x="${X0}" y="14" fill="${ink}" class="fv-b">Day average</text><text x="${X0}" y="30" fill="${mute}" class="fv-s">about ${r0(qd[9])} €/MWh</text>`;
-      s += `<text x="${X0}" y="45" fill="${amber}" class="fv-s">1 in 20 above ${r0(cut)}</text>`;
-    }
-    s += `<path d="${steps(f)}" fill="none" stroke="${ink}" stroke-width="2.2"/>`;
-    s += `<circle cx="${x(pk)}" cy="${y(f[pk])}" r="5" fill="${amber}" stroke="#fff" stroke-width="2"/>`;
-    s += `<text x="${x(pk)}" y="${y(f[pk]) - 12}" text-anchor="middle" class="fv-v" fill="${amber}">${r0(f[pk])}</text>`;
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast price per hour, with the hours that may cross ${LIM} €/MWh marked">`;
+    for (let g = bot; g <= top + 1e-9; g += st) s += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "#a8a29e" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
+    // the limit
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(LIM)}" y2="${y(LIM)}" stroke="${amber}" stroke-width="1.5" stroke-dasharray="6 5"/>`;
+    s += `<text x="${W - R + 8}" y="${y(LIM) + 4.5}" fill="${amber}" class="fv-b">${r0(LIM)}</text>`;
+    const bw = Math.min(26, cw * 0.62);
+    s += `<path d="${f.map((p, h) => `${h ? "L" : "M"}${x(h).toFixed(1)},${y(p).toFixed(1)}`).join("")}" fill="none" stroke="${ink}" stroke-opacity=".35" stroke-width="1.5"/>`;
     for (let h = 0; h < n; h++) {
-      if (h % 3 == 0) s += `<text x="${xs(h)}" y="${H - 10}" text-anchor="middle" fill="${mute}">${hh(h)}</text>`;
+      const q = Q && Q[h], fl = flag(q), col = fl == "hi" ? amber : fl == "neg" ? blue : ink;
+      if (q) s += `<rect x="${x(h) - bw / 2}" width="${bw}" y="${y(q[18])}" height="${Math.max(3, y(q[0]) - y(q[18]))}" rx="${Math.min(8, bw / 2)}" fill="${col}" fill-opacity="${fl ? .22 : .07}"/>`;
+      s += `<circle cx="${x(h)}" cy="${y(f[h])}" r="${fl ? 5 : 4}" fill="${fl ? col : ink}" stroke="#fff" stroke-width="1.5"/>`;
+      if (fl) {
+        const c = fl == "hi" ? above(q, LIM) : 1 - above(q, 0);
+        s += `<text x="${x(h)}" y="${y(q[18]) - 8}" text-anchor="middle" fill="${col}" class="fv-s" font-weight="600">${pct(c)}</text>`;
+      }
+      if (h % 3 == 0) s += `<text x="${x(h)}" y="${H - 10}" text-anchor="middle" fill="${mute}">${hh(h)}</text>`;
       s += `<rect class="fv-hit" data-h="${h}" x="${xs(h)}" width="${cw}" y="${T}" height="${H - T}" fill="transparent"/>`;
     }
     return s + "</svg>";
   }
 
-  function one(M, h) {
-    if (!M.q) return "";
-    const q = M.q[h], dd = dens(q, 120), w = 360, hg = 132, pad = (q[18] - q[0]) * 0.04 + 1, lo = q[0] - pad, hi = q[18] + pad;
-    const X = p => 6 + (w - 12) * (p - lo) / (hi - lo), Y = u => hg - 26 - (hg - 40) * u;
-    const top = smooth(dd.filter((_, i) => i % 4 == 0 || i == 119).map(o => [X(o[0]), Y(o[1])]));
-    let t = `<svg viewBox="0 0 ${w} ${hg}" role="img" aria-label="Distribution of the price at ${hh(h)}:00"><defs><linearGradient id="fva" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${aqua}" stop-opacity=".55"/><stop offset="1" stop-color="${aqua}" stop-opacity=".04"/></linearGradient></defs>`;
-    t += `<path d="${top}L${X(q[18])},${Y(0)}L${X(q[0])},${Y(0)}Z" fill="url(#fva)"/><path d="${top}" fill="none" stroke="${aqua}" stroke-width="1.8"/>`;
-    t += `<line x1="${X(M.mean[h])}" x2="${X(M.mean[h])}" y1="${Y(1.04)}" y2="${Y(0)}" stroke="#1c1917" stroke-width="1.6" stroke-dasharray="3 3"/>`;
-    for (const k of [0, 9, 18]) t += `<text x="${X(q[k])}" y="${hg - 6}" text-anchor="${k == 0 ? "start" : k == 18 ? "end" : "middle"}" fill="${mute}">${r0(q[k])}</text>`;
-    return t + "</svg>";
+  // the hours that cross, as a list: neighbouring hours of the same kind in one row
+  function risks(M) {
+    if (!M.q) return "<h2>No range yet</h2>";
+    const head = `<h2>Hours to watch</h2><p>At least ${ODDS == 0.05 ? "1 in 20" : ODDS == 0.25 ? "1 in 4" : "1 in 10"} chance above ${r0(LIM)} €/MWh or below 0</p>`;
+    const runs = [];
+    M.q.forEach((q, h) => {
+      const fl = flag(q); if (!fl) return;
+      const c = fl == "hi" ? above(q, LIM) : 1 - above(q, 0), last = runs[runs.length - 1];
+      if (last && last.fl == fl && last.b == h - 1) { last.b = h; last.c = Math.max(last.c, c); last.f.push(M.mean[h]); }
+      else runs.push({ fl, a: h, b: h, c, f: [M.mean[h]] });
+    });
+    if (!runs.length) return head + `<p class="fv-none">None tomorrow. The highest chance of going above ${r0(LIM)} is ${pct(Math.max(...M.q.map(q => above(q, LIM))))}.</p>`;
+    return head + `<table class="fv-tab"><tr><th>Hours</th><th>Forecast</th><th>Chance, at most</th></tr>` + runs.map(r =>
+      `<tr><td>${hh(r.a)}:00${r.b > r.a ? `–${hh(r.b + 1)}:00` : ""}</td><td>${r.b > r.a ? `${r0(Math.min(...r.f))} to ${r0(Math.max(...r.f))}` : r0(r.f[0])}</td><td style="color:${r.fl == "hi" ? amber : blue};font-weight:600">${pct(r.c)} ${r.fl == "hi" ? "above " + r0(LIM) : "below 0"}</td></tr>`).join("") + "</table>";
   }
 
   function daybars(M) {
@@ -118,27 +84,30 @@
 
   function draw() {
     const M = D.models[cur], f = M.mean, pk = f.indexOf(Math.max(...f)), lw = f.indexOf(Math.min(...f)), avg = r0(f.reduce((a, b) => a + b) / n);
-    const unc = M.q ? M.q.map(q => q[18] - q[0]).indexOf(Math.max(...M.q.map(q => q[18] - q[0]))) : null;
     const keys = Object.keys(D.models);
     root.innerHTML = `<div class="fv-top"><h1>${D.day}<small>Saved ${D.made}, before the auction</small></h1>
       <div class="fv-num"><b>${avg}</b>average, €/MWh</div><div class="fv-num"><b style="color:${amber}">${r0(f[pk])}</b>highest, ${hh(pk)}:00</div>
       <div class="fv-num"><b>${r0(f[lw])}</b>lowest, ${hh(lw)}:00</div><div class="fv-num"><b>${D.neg}</b>chance of a negative price</div></div>
       ${keys.length > 1 ? `<div class="fv-pills">${keys.map(k => `<button data-m="${k}" class="${k == cur ? "on" : ""}">${D.models[k].label}</button>`).join("")}</div>` : ""}
+      ${M.q ? `<div class="fv-ctl">Mark hours with at least <select id="fv-odds">${[[0.05, "1 in 20"], [0.1, "1 in 10"], [0.25, "1 in 4"]].map(([v, t]) => `<option value="${v}"${v == ODDS ? " selected" : ""}>${t}</option>`).join("")}</select> chance of a price above <input id="fv-lim" type="number" step="25" value="${r0(LIM)}"> €/MWh, or below 0</div>` : ""}
       <div class="fv-chart">${main(M)}<div class="fv-tip" hidden></div></div>
-      ${M.q ? `<div class="fv-key"><span><i style="background:${ink};height:2px"></i>forecast</span><span><i style="background:${ink};opacity:.08"></i>9 times in 10 inside</span><span><i style="background:${aqua};opacity:.35"></i>how likely each price is</span><span><i style="background:repeating-linear-gradient(45deg,${amber} 0 2px,#fff 2px 5px)"></i>dearest 1 in 20</span></div>` : ""}
-      <div class="fv-low"><div class="fv-pane">${unc == null ? "<h2>No range yet</h2>" : `<h2>${hh(unc)}:00, the least certain hour</h2><p>Half the time below ${r0(M.q[unc][9])} €/MWh</p>${one(M, unc)}`}</div>
+      ${M.q ? `<div class="fv-key"><span><i style="background:${ink};height:8px;width:8px;border-radius:50%"></i>forecast</span><span><i style="background:${ink};opacity:.12"></i>9 times in 10 inside</span><span><i style="background:${amber};opacity:.5"></i>may go above the limit</span><span><i style="background:${blue};opacity:.5"></i>may go below 0</span></div>` : ""}
+      <div class="fv-low"><div class="fv-pane">${risks(M)}</div>
       <div class="fv-pane"><h2>Hours inside the range</h2><p>Per day, out of 24. Pale: fewer than 8 in 10</p>${daybars(M)}</div>
       <div class="fv-pane"><h2>Last 30 days, ${D.models[D.main].label}</h2><p>Dot: where it is. Line: the aim</p>${D.checks.map(meter).join("")}</div></div>`;
     const tip = root.querySelector(".fv-tip"), box = root.querySelector(".fv-chart");
     root.querySelectorAll(".fv-hit").forEach(el => {
       el.addEventListener("mousemove", e => {
         const h = +el.dataset.h, q = M.q && M.q[h], b = box.getBoundingClientRect();
-        tip.innerHTML = `<b>${hh(h)}:00</b> ${r0(f[h])} €/MWh` + (q ? `<br>9 in 10: ${r0(q[0])} to ${r0(q[18])}<br>half the time: ${r0(q[4])} to ${r0(q[14])}` : "");
+        tip.innerHTML = `<b>${hh(h)}:00</b> ${r0(f[h])} €/MWh` + (q ? `<br>9 in 10: ${r0(q[0])} to ${r0(q[18])}<br>above ${r0(LIM)}: ${pct(above(q, LIM))}<br>below 0: ${pct(1 - above(q, 0))}` : "");
         tip.hidden = false;
         tip.style.left = Math.min(b.width - 190, Math.max(0, e.clientX - b.left + 14)) + "px"; tip.style.top = Math.max(0, e.clientY - b.top - 70) + "px";
       });
       el.addEventListener("mouseleave", () => { tip.hidden = true; });
     });
+    const li = root.querySelector("#fv-lim"), od = root.querySelector("#fv-odds");
+    if (li) li.addEventListener("change", () => { const v = +li.value; if (isFinite(v)) { LIM = v; try { localStorage.setItem("fv-lim", v); } catch (e) {} draw(); } });
+    if (od) od.addEventListener("change", () => { ODDS = +od.value; try { localStorage.setItem("fv-odds", ODDS); } catch (e) {} draw(); });
     root.querySelectorAll(".fv-pills button").forEach(b => b.addEventListener("click", () => { cur = b.dataset.m; draw(); }));
   }
   draw();
