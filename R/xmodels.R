@@ -49,3 +49,14 @@ learx_forecast_day <- function(features, exog, d, groups = c("nb", "hol", "wx"),
     as.numeric(inverse_p(predict(m$fit, xl, s = m$lambda), inp$med, inp$s))
   })
 }
+
+# prices relative to gas: every day's prices (the target, its own earlier prices, the neighbours' prices) divided by
+# the gas price known that morning, so a change in fuel cost isn't read as a spike that falls back. a model run on
+# the result forecasts a ratio; times gas[d] it is a price again. tested in jacobazu/dk1-model-comparison, level/
+gas_relative <- function(features, exog) {
+  g <- exog$fuel[, "gas_d2"]
+  features$P       <- features$P / g
+  features$X_price <- features$X_price / g
+  exog$nb          <- exog$nb / g
+  list(features = features, exog = exog, gas = g)
+}
