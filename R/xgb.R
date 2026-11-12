@@ -16,8 +16,9 @@ long <- function(M) as.vector(t(M))
 
 # features per day and hour
 xgb_design <- function(features, rows, exog = NULL) {
-  P   <- features$P
-  lag <- function(k) lag_days(P, k)[rows, , drop = FALSE]
+  # the lagged prices as make_features built them (the same numbers as lag_days(P, k)), so that prices made
+  # relative to gas keep each row's earlier prices relative to that row's own day
+  lag <- function(k) unname(features$X_price[rows, grepl(paste0("^d", k, "_h"), colnames(features$X_price)), drop = FALSE])
   d1  <- lag(1)
   rep24 <- function(x) rep(x, each = 24)
 
