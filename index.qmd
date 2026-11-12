@@ -95,7 +95,7 @@ if (nrow(scored) == 0) {
   wk <- scored |> filter(date > max(date) - days(7)) |>
     mutate(time = as_datetime(date, tz = "Europe/Copenhagen") + hours(hour))
   p2 <- plot_ly(wk, x = ~time) |>
-    add_lines(y = ~actual, name = "What it cost", line = list(color = ink, width = 2),
+    add_lines(y = ~actual, name = "Actual price", line = list(color = ink, width = 2),
               hovertemplate = "%{y:.0f} €/MWh<extra>Actual</extra>")
   for (m in models) {
     vis <- m == models[1]

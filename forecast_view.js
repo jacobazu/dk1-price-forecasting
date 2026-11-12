@@ -111,7 +111,7 @@
       ${stat("Negative price", ng == null ? "–" : pct(ng), ng == null ? "" : ng < 0.055 ? "chance, in every hour" : `chance at ${hh(gi)}:00, the most likely hour`)}
       </div>
       <div class="fv-chart">${chart(M)}<div class="fv-tip" hidden></div></div>
-      <div class="fv-key"><span><i style="background:${ink};height:3px"></i>forecast</span>${Q ? `<span><i style="background:${M.color};opacity:.5"></i>half the time inside</span><span><i style="background:${M.color};opacity:.2"></i>9 times in 10 inside</span>` : ""}${Q && Q.some(q => neg(q) >= 0.1) ? `<span><i style="background:${blue};opacity:.45"></i>1 in 10 or more chance of a negative price</span>` : ""}${A ? `<span><i class="fv-dot"></i>what it cost</span>${hit != null && hit < 24 ? `<span><i class="fv-dot" style="background:#b91c1c;border-color:#b91c1c"></i>outside the range</span>` : ""}` : ""}</div>
+      <div class="fv-key"><span><i style="background:${ink};height:3px"></i>forecast</span>${Q ? `<span><i style="background:${M.color};opacity:.5"></i>half the time inside</span><span><i style="background:${M.color};opacity:.2"></i>9 times in 10 inside</span>` : ""}${Q && Q.some(q => neg(q) >= 0.1) ? `<span><i style="background:${blue};opacity:.45"></i>1 in 10 or more chance of a negative price</span>` : ""}${A ? `<span><i class="fv-dot"></i>actual price</span>${hit != null && hit < 24 ? `<span><i class="fv-dot" style="background:#b91c1c;border-color:#b91c1c"></i>outside the range</span>` : ""}` : ""}</div>
       <div class="fv-low"><div class="fv-pane">${blocks(M)}</div><div class="fv-pane">${normal(M, wT)}</div><div class="fv-pane">${held(M)}</div></div>`;
     const tip = root.querySelector(".fv-tip"), box = root.querySelector(".fv-chart"), ruler = root.querySelector(".fv-ruler");
     root.querySelectorAll(".fv-hit").forEach(el => {
@@ -122,7 +122,7 @@
         ruler.querySelector("circle").setAttribute("cx", el.dataset.x); ruler.querySelector("circle").setAttribute("cy", el.dataset.y);
         tip.innerHTML = `<b>${hh(h)}:00 to ${hh((h + 1) % 24)}:00</b><table><tr><td>Forecast</td><td>${r0(f[h])}</td></tr>` +
           (q ? `<tr><td>Half the time</td><td>${rng(q[4], q[14])}</td></tr><tr><td>9 times in 10</td><td>${rng(q[0], q[18])}</td></tr><tr><td>Below 0</td><td>${pct(neg(q))}</td></tr>` : "") +
-          (A ? `<tr><td>What it cost</td><td><b>${r0(A[h])}</b></td></tr>` : "") + `</table>`;
+          (A ? `<tr><td>Actual price</td><td><b>${r0(A[h])}</b></td></tr>` : "") + `</table>`;
         tip.hidden = false;
         tip.style.left = Math.min(b.width - 230, Math.max(0, e.clientX - b.left + 16)) + "px"; tip.style.top = Math.max(0, e.clientY - b.top - 90) + "px";
       });
