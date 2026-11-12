@@ -15,8 +15,8 @@
   }
   const pct = c => c >= 0.95 ? "over 95%" : c <= 0.05 ? "under 5%" : r0(100 * c) + "%";
   const blue = "#1c7fb0";
-  let LIM = 200, ODDS = 0.1;
-  try { LIM = +localStorage.getItem("fv-lim") || LIM; ODDS = +localStorage.getItem("fv-odds") || ODDS; } catch (e) {}
+  // a price above 200 €/MWh came in about 1 hour in 20 over the last two years, a negative price in about 1 in 27
+  const LIM = 200, ODDS = 0.1;
   const flag = q => !q ? null : above(q, LIM) >= ODDS ? "hi" : (1 - above(q, 0)) >= ODDS ? "neg" : null;
 
   // each hour: the forecast as a dot, the 9-in-10 range as a bar. hours where the chance of crossing the limit
@@ -31,11 +31,12 @@
     let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Forecast price per hour, with the hours that may cross ${LIM} €/MWh marked">`;
     for (let g = bot; g <= top + 1e-9; g += st) s += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="${g == 0 && bot < 0 ? "#a8a29e" : grid}"/><text x="${L - 10}" y="${y(g) + 4.5}" text-anchor="end" fill="${mute}">${r0(g)}</text>`;
     // the limit
+    s += `<text x="4" y="${T - 12}" fill="${mute}" class="fv-s">€/MWh</text>`;
     // the limit, drawn only when it is inside the chart: a limit far above every range shouldn't squash the chart
     if (LIM <= top && LIM >= bot) {
       s += `<line x1="${L}" x2="${W - R}" y1="${y(LIM)}" y2="${y(LIM)}" stroke="${amber}" stroke-width="1" stroke-opacity=".8" stroke-dasharray="4 5"/>`;
       s += `<text x="${W - R + 8}" y="${y(LIM) - 3}" fill="${amber}" class="fv-s">limit</text><text x="${W - R + 8}" y="${y(LIM) + 12}" fill="${amber}" class="fv-s">${r0(LIM)}</text>`;
-    } else s += `<text x="${W - R}" y="${T - 10}" text-anchor="end" fill="${mute}" class="fv-s">Your limit, ${r0(LIM)} €/MWh, is ${LIM > top ? "above" : "below"} every hour's range</text>`;
+    } else s += `<text x="${W - R}" y="${T - 12}" text-anchor="end" fill="${mute}" class="fv-s">No hour is near ${LIM} €/MWh</text>`;
     const bw = Math.min(26, cw * 0.62);
     s += `<path d="${f.map((p, h) => `${h ? "L" : "M"}${x(h).toFixed(1)},${y(p).toFixed(1)}`).join("")}" fill="none" stroke="${ink}" stroke-opacity=".35" stroke-width="1.5"/>`;
     for (let h = 0; h < n; h++) {
@@ -46,7 +47,7 @@
         const c = fl == "hi" ? above(q, LIM) : 1 - above(q, 0);
         s += `<text x="${x(h)}" y="${y(q[18]) - 8}" text-anchor="middle" fill="${col}" class="fv-s" font-weight="600">${pct(c)}</text>`;
       }
-      if (h % 3 == 0) s += `<text x="${x(h)}" y="${H - 10}" text-anchor="middle" fill="${mute}">${hh(h)}</text>`;
+      if (h % 3 == 0) s += `<text x="${x(h)}" y="${H - 10}" text-anchor="middle" fill="${mute}">${hh(h)}:00</text>`;
       s += `<rect class="fv-hit" data-h="${h}" x="${xs(h)}" width="${cw}" y="${T}" height="${H - T}" fill="transparent"/>`;
     }
     return s + "</svg>";
@@ -55,7 +56,7 @@
   // the hours that cross, as a list: neighbouring hours of the same kind in one row
   function risks(M) {
     if (!M.q) return "<h2>No range yet</h2>";
-    const head = `<h2>Hours to watch</h2><p>At least ${ODDS == 0.05 ? "1 in 20" : ODDS == 0.25 ? "1 in 4" : "1 in 10"} chance above ${r0(LIM)} €/MWh or below 0</p>`;
+    const head = `<h2>Hours to watch</h2><p>At least a 1 in 10 chance above ${LIM} €/MWh or below 0</p>`;
     const runs = [];
     M.q.forEach((q, h) => {
       const fl = flag(q); if (!fl) return;
@@ -92,7 +93,7 @@
       <div class="fv-num"><b>${avg}</b>average, €/MWh</div><div class="fv-num"><b style="color:${amber}">${r0(f[pk])}</b>highest, ${hh(pk)}:00</div>
       <div class="fv-num"><b>${r0(f[lw])}</b>lowest, ${hh(lw)}:00</div><div class="fv-num"><b>${D.neg}</b>chance of a negative price</div></div>
       ${keys.length > 1 ? `<div class="fv-pills">${keys.map(k => `<button data-m="${k}" class="${k == cur ? "on" : ""}">${D.models[k].label}</button>`).join("")}</div>` : ""}
-      ${M.q ? `<div class="fv-ctl">Mark hours with at least <select id="fv-odds">${[[0.05, "1 in 20"], [0.1, "1 in 10"], [0.25, "1 in 4"]].map(([v, t]) => `<option value="${v}"${v == ODDS ? " selected" : ""}>${t}</option>`).join("")}</select> chance of a price above <input id="fv-lim" type="number" step="25" value="${r0(LIM)}"> €/MWh, or below 0</div>` : ""}
+      ${M.q ? `<div class="fv-ctl">Marked: hours with at least a 1 in 10 chance of a price above ${LIM} €/MWh, which only about 1 hour in 20 reached over the last two years, or below 0.</div>` : ""}
       <div class="fv-chart">${main(M)}<div class="fv-tip" hidden></div></div>
       ${M.q ? `<div class="fv-key"><span><i style="background:${ink};height:8px;width:8px;border-radius:50%"></i>forecast</span><span><i style="background:${ink};opacity:.12"></i>9 times in 10 inside</span><span><i style="background:${amber};opacity:.5"></i>may go above the limit</span><span><i style="background:${blue};opacity:.5"></i>may go below 0</span></div>` : ""}
       <div class="fv-low"><div class="fv-pane">${risks(M)}</div>
@@ -108,9 +109,6 @@
       });
       el.addEventListener("mouseleave", () => { tip.hidden = true; });
     });
-    const li = root.querySelector("#fv-lim"), od = root.querySelector("#fv-odds");
-    if (li) li.addEventListener("change", () => { const v = +li.value; if (isFinite(v)) { LIM = v; try { localStorage.setItem("fv-lim", v); } catch (e) {} draw(); } });
-    if (od) od.addEventListener("change", () => { ODDS = +od.value; try { localStorage.setItem("fv-odds", ODDS); } catch (e) {} draw(); });
     root.querySelectorAll(".fv-pills button").forEach(b => b.addEventListener("click", () => { cur = b.dataset.m; draw(); }));
   }
   draw();

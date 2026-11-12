@@ -140,7 +140,7 @@ if (nrow(scored) == 0) {
              showlegend = FALSE, textfont = list(size = 18, color = ink), hoverinfo = "skip")
   p |>
     layout(bargap = 0.35, xaxis = list(title = "", gridcolor = "#ffffff"),
-           yaxis = list(title = "", gridcolor = "#f0ece8", zeroline = FALSE, rangemode = "tozero"),
+           yaxis = list(title = "", gridcolor = "#f0ece8", zeroline = FALSE, rangemode = "tozero", ticksuffix = " €"),
            legend = list(orientation = "h", y = -0.12), hovermode = "closest",
            margin = list(l = 40, r = 10, t = 40, b = 10)) |>
     config(displayModeBar = FALSE) |>
