@@ -50,7 +50,7 @@ bmtx  <- safe("BMT-X",  \() bmtx_forecast_day(features, exog, d, groups))
 learx <- safe("LEAR-X", \() learx_forecast_day(features, exog, d, groups))
 
 # settings from 09_xgb.R
-xgb_day <- function(m, ex) {
+xgb_day <- function(m, ex, features = get("features", globalenv())) {
   if (!has_xgb) stop("xgboost not installed")
   tun <- read_csv("results/xgb_tuning.csv", show_col_types = FALSE) |>
     filter(model == m, chosen)
@@ -101,6 +101,19 @@ fuel_bias <- safe("Gas bias", \() {
   if (is.null(b)) stop("under a month of live days") else b$bias
 })[1]
 
+# challenger from 14 nov 2026: lear-x on prices relative to the gas price (gas_relative in R/xmodels.R), in the
+# ensemble in place of lear-x. the live models run about 20 too low since prices and gas doubled; on 405 days this
+# cut lear-x's error from 19.5 to 17.9 and its bias from +8.8 to +2.6 (jacobazu/dk1-model-comparison, level/, rules
+# first). early check 15 dec 2026, otherwise 1 mar 2027. bmt-x and xgboost-x the same way are saved only: not tested yet
+rel <- safe("Gas-relative inputs", \() gas_relative(features, exog))
+rel_run <- function(name, f) safe(name, \() {
+  if (!is.list(rel)) stop("no gas price")
+  rel$gas[d] * f()
+})
+learx_rel <- rel_run("LEAR-X gas-relative", \() learx_forecast_day(rel$features, rel$exog, d, groups))
+bmtx_rel  <- rel_run("BMT-X gas-relative",  \() bmtx_forecast_day(rel$features, rel$exog, d, groups))
+xgbx_rel  <- rel_run("XGBoost-X gas-relative", \() xgb_day("xgbx", rel$exog[groups], rel$features))
+
 naive_day <- features$P[d - 1, ]   # same hour yesterday
 naive_mix <- if (features$dow[d] %in% c(1, 6, 7)) features$P[d - 7, ] else naive_day   # last week mon, sat, sun
 
@@ -119,6 +132,8 @@ new_forecast <- tibble(
          ensemble_fuel = round((bmtx_f + learx_f + xgbx_f) / 3, 2),
          ensemble_fuel_4y = round((bmtx_f + learx_f4y + xgbx_f) / 3, 2),
          ensemble_fuel_bc = round(ensemble_fuel + fuel_bias, 2),
+         learx_rel = round(learx_rel, 2), bmtx_rel = round(bmtx_rel, 2), xgbx_rel = round(xgbx_rel, 2),
+         ensemble_gasrel = (bmtx + learx_rel + xgbx) / 3,
          ensemble_bc = ensemble + bias,
          ensemble_gas = ensemble + gas_adj,
          across(starts_with("ensemble"), \(x) round(x, 2)))
