@@ -1,4 +1,6 @@
-# checks that the day's forecasts were made. a failed run means github sends an email.
+# checks that the day's forecasts were made. a failed run means github sends an email, so it fails only when
+# something needs doing by hand or has stopped working; a gap that can no longer be fixed is a warning.
+# the workflows that run many times a day send no email of their own: this check is their alarm.
 # started by the outside scheduler at 10:50 (price forecast only, still time to run it by hand before the
 # auction) and 11:50 danish time (everything). the cron below is a backup
 
@@ -40,10 +42,14 @@ jobs:
             fi
             last=$(curl -sf "$raw/dk1-imbalance-forecasting/master/forecasts/intraday_log.csv" | tail -1 | cut -d, -f1)
             age=$(( ($(date -u +%s) - $(date -u -d "$last" +%s)) / 60 ))
+            # energinet's live data is sometimes an hour or two late, and then no forecast is made: a few hours
+            # without one is a warning, eight hours means the runs have stopped
             if [ "$age" -le 180 ]; then
               echo "imbalance forecast made $age minutes ago: ok"
+            elif [ "$age" -le 480 ]; then
+              echo "::warning::The last imbalance forecast is $age minutes old (made $last UTC), probably late data."
             else
-              echo "::error::The last imbalance forecast is $age minutes old (made $last UTC)."
+              echo "::error::The last imbalance forecast is $age minutes old (made $last UTC). The live runs have stopped."
               fail=1
             fi
           fi
@@ -63,11 +69,16 @@ jobs:
             fi
           fi
 
-          # battery: tomorrow's reserve capacity, saved before energinet's 07:30 auctions
-          if curl -sf "$raw/dk1-battery-trade/main/opportunity/live_capacity.csv" | grep -q ",$tomorrow,"; then
+          # battery: tomorrow's reserve capacity, saved before energinet's 07:30 auctions. by the time this runs a
+          # missing day can no longer be saved, so one gap is a warning; two days in a row means the runs are broken
+          cap=$(curl -sf "$raw/dk1-battery-trade/main/opportunity/live_capacity.csv")
+          today=$(TZ=Europe/Copenhagen date +%F)
+          if echo "$cap" | grep -q ",$tomorrow,"; then
             echo "battery reserve capacity for $tomorrow: ok"
+          elif echo "$cap" | grep -q ",$today,"; then
+            echo "::warning::No battery reserve capacity for $tomorrow. It can only be saved before 07:25; the day is a gap."
           else
-            echo "::error::No battery reserve capacity for $tomorrow. It can only be saved before 07:25; the day is a gap."
+            echo "::error::No battery reserve capacity for $tomorrow or $today. Check 'opportunity live' in dk1-battery-trade."
             fail=1
           fi
 
