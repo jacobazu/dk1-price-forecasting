@@ -48,6 +48,29 @@ jobs:
             fi
           fi
 
+          # offshore wind forecast for tomorrow (renewables repo, saved before the auction)
+          if [ "$now" -ge 1130 ]; then
+            if curl -sf "$raw/dk1-renewables-forecasting/main/forecasts/live_forecasts.csv" | grep -q ",$tomorrow,"; then
+              echo "offshore wind forecast for $tomorrow: ok"
+            else
+              echo "::error::No offshore wind forecast for $tomorrow. Run 'Live forecast' in dk1-renewables-forecasting before 12:00."
+              fail=1
+            fi
+            if curl -sf "$raw/dk1-renewables-forecasting/main/forecasts/capture_live.csv" | grep -q ",$tomorrow,"; then
+              echo "capture price for $tomorrow: ok"
+            else
+              echo "::warning::No capture price for $tomorrow yet (it needs the wind and the price forecast)."
+            fi
+          fi
+
+          # battery: tomorrow's reserve capacity, saved before energinet's 07:30 auctions
+          if curl -sf "$raw/dk1-battery-trade/main/opportunity/live_capacity.csv" | grep -q ",$tomorrow,"; then
+            echo "battery reserve capacity for $tomorrow: ok"
+          else
+            echo "::error::No battery reserve capacity for $tomorrow. It can only be saved before 07:25; the day is a gap."
+            fail=1
+          fi
+
           # the published pages, not only the forecasts: each page carries the time it was built
           for page in "dk1-price-forecasting 30" "dk1-battery-trade 30" "dk1-imbalance-forecasting 3"; do
             set -- $page
