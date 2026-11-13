@@ -56,7 +56,7 @@ jobs:
               echo "::error::No offshore wind forecast for $tomorrow. Run 'Live forecast' in dk1-renewables-forecasting before 12:00."
               fail=1
             fi
-            if curl -sf "$raw/dk1-renewables-forecasting/main/forecasts/capture_live.csv" | grep -q ",$tomorrow,"; then
+            if curl -sf "$raw/dk1-renewables-forecasting/main/forecasts/capture_live.csv" | grep -q "^$tomorrow,"; then
               echo "capture price for $tomorrow: ok"
             else
               echo "::warning::No capture price for $tomorrow yet (it needs the wind and the price forecast)."
