@@ -27,9 +27,11 @@ all_forecasts <- function(models) {
     select(date, hour, actual, all_of(models)) |>
     mutate(source = "backtest")
 
-  live <- read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE,
-                   col_types = cols(forecast_made_utc = col_character(), date = col_date(),
-                                    hour = col_integer(), .default = col_double()))
+  # live forecasts, plus the days made afterwards (kept in their own file, starred on the dashboard)
+  fc_types <- cols(forecast_made_utc = col_character(), date = col_date(), hour = col_integer(), .default = col_double())
+  live <- bind_rows(read_csv("forecasts/forecasts_live.csv", show_col_types = FALSE, col_types = fc_types),
+                    if (file.exists("forecasts/forecasts_backfill.csv"))
+                      read_csv("forecasts/forecasts_backfill.csv", show_col_types = FALSE, col_types = fc_types))
   for (m in setdiff(ensemble_parts$ensemble, names(live))) live[[m]] <- NA_real_
   live <- add_ensembles(live)
   for (m in setdiff(models, names(live))) live[[m]] <- NA_real_

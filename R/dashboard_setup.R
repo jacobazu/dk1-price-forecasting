@@ -28,10 +28,10 @@ actual <- readRDS("data/processed/prices_dk1_hourly.rds") |>
   group_by(date, hour) |>
   summarise(actual = mean(price), .groups = "drop")
 
-# live forecasts
-fc <- read_csv("forecasts/forecasts_live.csv",
-               col_types = cols(forecast_made_utc = col_character(), date = col_date(),
-                                hour = col_integer(), .default = col_double()))
+# live forecasts, plus the days made afterwards (forecasts_backfill.csv, kept apart and starred)
+fc_types <- cols(forecast_made_utc = col_character(), date = col_date(), hour = col_integer(), .default = col_double())
+fc <- bind_rows(read_csv("forecasts/forecasts_live.csv", col_types = fc_types),
+                if (file.exists("forecasts/forecasts_backfill.csv")) read_csv("forecasts/forecasts_backfill.csv", col_types = fc_types))
 
 # days made after the fact because the live run failed, marked with a star wherever they show
 backfilled <- if (file.exists("forecasts/backfilled.csv")) read_csv("forecasts/backfilled.csv", show_col_types = FALSE, col_types = cols(date = col_date(), .default = col_character())) else tibble(date = as_date(character()), reason = character())
